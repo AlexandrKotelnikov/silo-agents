@@ -8,7 +8,7 @@ from uuid import NAMESPACE_URL, uuid5
 import httpx
 
 from .embeddings import Embedder
-from .models import RetrievalRecord
+from .models import Domain, RetrievalRecord
 from .security import RetrievalPrincipal
 
 
@@ -52,21 +52,14 @@ class QdrantRestClient:
         records: Iterable[RetrievalRecord],
         embedder: Embedder,
     ) -> None:
-        points = []
-        for record in records:
-            points.append(
-                {
-                    "id": str(uuid5(NAMESPACE_URL, record.record_id)),
-                    "vector": embedder.embed(record.text),
-                    "payload": {
-                        "record_id": record.record_id,
-                        "domain": record.domain.value,
-                        "classification": record.classification.value,
-                        "text": record.text,
-                        "metadata": record.metadata,
-                    },
-                }
-            )
+        points = [
+            {
+                "id": str(uuid5(NAMESPACE_URL, record.record_id)),
+                "vector": embedder.embed(record.text),
+                "payload": record.model_dump(mode="json"),
+            }
+            for record in records
+        ]
         response = self._client.put(
             f"/collections/{collection_name}/points",
             params={"wait": "true"},
@@ -107,7 +100,7 @@ class QdrantRetriever:
         self,
         client: QdrantRestClient,
         collection_name: str,
-        domain: Any,
+        domain: Domain,
         principal: RetrievalPrincipal,
         embedder: Embedder,
     ) -> None:
