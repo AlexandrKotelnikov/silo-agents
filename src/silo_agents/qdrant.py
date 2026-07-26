@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
@@ -52,7 +52,7 @@ class QdrantRestClient:
         records: Iterable[RetrievalRecord],
         embedder: Embedder,
     ) -> None:
-        points = [
+        points: list[dict[str, Any]] = [
             {
                 "id": str(uuid5(NAMESPACE_URL, record.record_id)),
                 "vector": embedder.embed(record.text),
@@ -85,12 +85,17 @@ class QdrantRestClient:
             },
         )
         response.raise_for_status()
-        payload = response.json()
+        raw_payload: Any = response.json()
+        if not isinstance(raw_payload, dict):
+            raise ValueError("Qdrant returned a non-object response")
+        payload = cast(dict[str, Any], raw_payload)
         result = payload.get("result", {})
-        points = result.get("points", []) if isinstance(result, dict) else []
+        if not isinstance(result, dict):
+            raise ValueError("Qdrant returned an invalid result object")
+        points = result.get("points", [])
         if not isinstance(points, list):
             raise ValueError("Qdrant returned an invalid points response")
-        return [point for point in points if isinstance(point, dict)]
+        return [cast(dict[str, Any], point) for point in points if isinstance(point, dict)]
 
 
 class QdrantRetriever:
