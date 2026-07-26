@@ -1,0 +1,11 @@
+routes:
+  process: [orchestrator]
+  maintenance: [orchestrator]
+  economics: [orchestrator]
+  orchestrator: []
+
+rules:
+  restricted_requires_human_approval: true
+  provenance_required: true
+  direct_agent_to_agent_messages: false
+  default_decision: deny
