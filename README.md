@@ -31,21 +31,30 @@ flowchart TD
 
 The orchestrator does not read domain documents. It routes using lightweight relevance acknowledgements, receives typed messages, and only accepts content approved by the policy gateway.
 
-## Current milestone
+## Implemented experiment
 
-The initial implementation provides a deterministic, model-independent security harness:
+The repository now executes the same benchmark in three modes:
 
-- three isolated domain knowledge bases;
-- blind routing through private relevance ACKs;
-- Pydantic message contracts;
-- fail-closed route and sharing policies;
-- field-level redaction;
-- mandatory provenance;
-- canary leakage detection;
-- three experiment modes: `shared_rag`, `isolated_rag`, and `policy_gated`;
-- tests, type checking, linting, and CI.
+| Mode | Knowledge layout | Delivered message | Expected risk |
+|---|---|---|---|
+| `shared_rag` | One store containing all domains | Raw combined retrieval | Leakage and domain mixing |
+| `isolated_rag` | One store per agent | Raw domain response | Better routing, sensitive-field leakage |
+| `policy_gated` | One store per agent | Typed, sanitized response | Target architecture |
 
-This stage intentionally avoids hiding security decisions inside an LLM. A real shared LLM and vector database will be added behind the same interfaces.
+The synthetic corpus contains process, maintenance, and economics records with unique canary values. Normal tasks, collaboration tasks, unrelated queries, and prompt-injection-style attacks are evaluated with the same harness.
+
+## Metrics
+
+- routing accuracy;
+- normal-task accuracy;
+- leakage rate;
+- cross-domain contamination rate;
+- abstention accuracy;
+- provenance coverage;
+- delivered payload size;
+- deterministic harness latency.
+
+Real token cost is intentionally excluded until an LLM is connected.
 
 ## Quick start
 
@@ -56,49 +65,55 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-```python
-from silo_agents import ExperimentMode, build_demo_system
+Run the complete comparison:
 
-system = build_demo_system()
-result = system.run(
-    "What limits reactor throughput and cooling?",
-    ExperimentMode.POLICY_GATED,
-)
-print(result.selected_agent)
-print(result.policy_decision)
+```bash
+silo-agents-benchmark \
+  --corpus benchmarks/corpus.jsonl \
+  --cases benchmarks/tasks.jsonl \
+  --output reports/latest
 ```
 
-## Evaluation plan
+Equivalent module command:
 
-| Mode | Knowledge layout | Message control | Purpose |
-|---|---|---|---|
-| `shared_rag` | One shared store | None | Baseline quality and leakage |
-| `isolated_rag` | Separate stores | Free-form | Tests isolation without governance |
-| `policy_gated` | Separate stores | Typed + deterministic gateway | Target architecture |
+```bash
+python -m silo_agents.experiment --output reports/latest
+```
 
-Primary metrics: task accuracy, routing accuracy, leakage rate, cross-domain contamination, abstention accuracy, provenance coverage, latency, and token cost.
+The command creates:
+
+```text
+reports/latest/report.json
+reports/latest/report.md
+```
+
+## Dataset format
+
+Corpus records are JSONL objects with a domain, classification, searchable text, a shareable projection, and optional restricted fields. Benchmark cases define expected routing, expected facts, forbidden canaries, and abstention behavior.
+
+All included data is synthetic. Do not add employer documents, real credentials, production tags, personal data, or confidential operational information.
 
 ## Security properties
 
 - Authorization is enforced before retrieval and before message delivery.
 - Agents do not receive credentials for other domains.
-- The orchestrator never receives raw source documents.
+- The orchestrator never receives raw source documents in the target mode.
 - Restricted data is denied by default.
+- Sensitive fields are removed by deterministic code, not an LLM prompt.
 - Missing provenance causes denial.
 - Agent-to-agent communication is not permitted directly.
-- Every permitted transfer is auditable and schema validated.
+- Every permitted transfer is schema validated.
 
 See [THREAT_MODEL.md](THREAT_MODEL.md) and [SECURITY.md](SECURITY.md).
 
 ## Roadmap
 
-1. Add benchmark datasets with synthetic canaries and adversarial prompts.
-2. Implement shared, isolated, and policy-gated end-to-end runners.
-3. Add Qdrant collections with retrieval-time authorization.
-4. Add a shared local LLM through an OpenAI-compatible interface.
-5. Integrate LangGraph while keeping policy checks outside the model.
-6. Add OpenTelemetry traces and reproducible experiment reports.
-7. Compare security, quality, cost, and latency across architectures.
+1. Replace lexical retrieval with Qdrant collections and retrieval-time authorization.
+2. Connect one shared local LLM through an OpenAI-compatible interface.
+3. Integrate LangGraph while keeping policy checks outside the model.
+4. Add OpenTelemetry traces and true token/cost measurements.
+5. Expand adversarial tests and add statistical confidence intervals.
+6. Publish reproducible model-backed experiment results.
 
 ## Project status
 
