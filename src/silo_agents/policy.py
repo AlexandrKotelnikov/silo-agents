@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Any
 
 from .models import AgentMessage, Classification, Domain, PolicyDecision
 
@@ -24,8 +25,24 @@ class PolicyGateway:
         sanitized = deepcopy(message)
         for field_name in message.restricted_fields:
             sanitized.conclusion.pop(field_name, None)
+        sanitized.conclusion = _redact_values(sanitized.conclusion, message.sensitive_values)
+        sanitized.sensitive_values = set()
         return PolicyDecision(
             allowed=True,
             reason="allowed_after_sanitization",
             sanitized_message=sanitized,
         )
+
+
+def _redact_values(value: Any, sensitive_values: set[str]) -> Any:
+    if isinstance(value, dict):
+        return {key: _redact_values(child, sensitive_values) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_redact_values(child, sensitive_values) for child in value]
+    if isinstance(value, str):
+        result = value
+        for sensitive in sorted(sensitive_values, key=len, reverse=True):
+            if sensitive:
+                result = result.replace(sensitive, "[REDACTED]")
+        return result
+    return value
