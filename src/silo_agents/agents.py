@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any, cast
 from uuid import uuid4
 
 from .llm import GroundedLLM
@@ -29,8 +30,10 @@ class DomainAgent:
                 missing_information=["relevant domain evidence"],
             )
         record = records[0]
-        shareable = dict(record.metadata.get("shareable", {}))
-        restricted_fields = set(record.metadata.get("restricted_fields", []))
+        shareable = cast(dict[str, Any], record.metadata.get("shareable", {}))
+        restricted_fields = {
+            str(value) for value in cast(list[object], record.metadata.get("restricted_fields", []))
+        }
         sensitive_values = {
             str(shareable[field_name])
             for field_name in restricted_fields
@@ -70,8 +73,11 @@ class LLMDomainAgent(DomainAgent):
         restricted_fields: set[str] = set()
         sensitive_values: set[str] = set()
         for record in records:
-            shareable = dict(record.metadata.get("shareable", {}))
-            current_fields = set(record.metadata.get("restricted_fields", []))
+            shareable = cast(dict[str, Any], record.metadata.get("shareable", {}))
+            current_fields = {
+                str(value)
+                for value in cast(list[object], record.metadata.get("restricted_fields", []))
+            }
             restricted_fields.update(current_fields)
             sensitive_values.update(
                 str(shareable[field_name])
