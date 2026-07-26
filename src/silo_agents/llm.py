@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import httpx
 from pydantic import BaseModel, Field
@@ -40,9 +40,10 @@ class DeterministicGroundedLLM:
         if not records:
             raise ValueError("records must not be empty")
         record = records[0]
+        shareable = cast(dict[str, Any], record.metadata.get("shareable", {}))
         return GroundedSynthesis(
             summary=str(record.metadata.get("summary", record.text)),
-            facts=dict(record.metadata.get("shareable", {})),
+            facts=dict(shareable),
         )
 
 
@@ -72,7 +73,7 @@ class OpenAICompatibleGroundedLLM:
     def synthesize(
         self, query: str, domain: Domain, records: list[RetrievalRecord]
     ) -> GroundedSynthesis:
-        context = [
+        context: list[dict[str, Any]] = [
             {
                 "record_id": record.record_id,
                 "text": record.text,
@@ -80,7 +81,7 @@ class OpenAICompatibleGroundedLLM:
             }
             for record in records
         ]
-        messages = [
+        messages: list[dict[str, str]] = [
             {
                 "role": "system",
                 "content": (
@@ -109,19 +110,33 @@ class OpenAICompatibleGroundedLLM:
         )
         latency_ms = (time.perf_counter() - started) * 1000
         response.raise_for_status()
-        body = response.json()
-        content = body["choices"][0]["message"]["content"]
+        raw_body: Any = response.json()
+        if not isinstance(raw_body, dict):
+            raise ValueError("LLM response must be a JSON object")
+        body = cast(dict[str, Any], raw_body)
+        choices = body.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("LLM response omitted choices")
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            raise ValueError("LLM returned an invalid choice")
+        message = first_choice.get("message")
+        if not isinstance(message, dict):
+            raise ValueError("LLM choice omitted message")
+        content = message.get("content")
         if not isinstance(content, str):
             raise ValueError("LLM returned non-text content")
-        parsed = json.loads(_strip_fence(content))
-        if not isinstance(parsed, dict):
-            raise ValueError("LLM response must be a JSON object")
+        raw_parsed: Any = json.loads(_strip_fence(content))
+        if not isinstance(raw_parsed, dict):
+            raise ValueError("LLM content must be a JSON object")
+        parsed = cast(dict[str, Any], raw_parsed)
         usage_payload = body.get("usage", {})
         usage = LLMUsage.model_validate(usage_payload if isinstance(usage_payload, dict) else {})
-        facts = parsed.get("facts", {})
+        facts_payload = parsed.get("facts", {})
+        facts = cast(dict[str, Any], facts_payload) if isinstance(facts_payload, dict) else {}
         return GroundedSynthesis(
             summary=str(parsed.get("summary", "")),
-            facts=facts if isinstance(facts, dict) else {},
+            facts=facts,
             usage=usage,
             latency_ms=latency_ms,
             model=str(body.get("model", self.model)),
