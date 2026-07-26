@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from typing import Any, cast
 from uuid import uuid4
 
+from .llm import GroundedLLM
 from .models import AgentMessage, Domain, Evidence
 from .rag import Retriever
 
@@ -28,6 +30,15 @@ class DomainAgent:
                 missing_information=["relevant domain evidence"],
             )
         record = records[0]
+        shareable = cast(dict[str, Any], record.metadata.get("shareable", {}))
+        restricted_fields = {
+            str(value) for value in cast(list[object], record.metadata.get("restricted_fields", []))
+        }
+        sensitive_values = {
+            str(shareable[field_name])
+            for field_name in restricted_fields
+            if field_name in shareable
+        }
         return AgentMessage(
             message_id=str(uuid4()),
             task_id=task_id,
@@ -39,8 +50,64 @@ class DomainAgent:
             conclusion={
                 "status": "grounded",
                 "summary": record.metadata.get("summary", record.text),
-                **record.metadata.get("shareable", {}),
+                **shareable,
             },
             evidence=[Evidence(source_id=record.record_id, fragment_id=f"{record.record_id}:0")],
-            restricted_fields=set(record.metadata.get("restricted_fields", [])),
+            restricted_fields=restricted_fields,
+            sensitive_values=sensitive_values,
+        )
+
+
+class LLMDomainAgent(DomainAgent):
+    """Domain agent that shares one LLM client but keeps a private retriever."""
+
+    def __init__(self, domain: Domain, knowledge_base: Retriever, llm: GroundedLLM) -> None:
+        super().__init__(domain, knowledge_base)
+        self.llm = llm
+
+    def answer(self, task_id: str, query: str, recipient: Domain) -> AgentMessage:
+        records = self.knowledge_base.search(query)
+        if not records:
+            return super().answer(task_id, query, recipient)
+        synthesis = self.llm.synthesize(query, self.domain, records)
+        restricted_fields: set[str] = set()
+        sensitive_values: set[str] = set()
+        for record in records:
+            shareable = cast(dict[str, Any], record.metadata.get("shareable", {}))
+            current_fields = {
+                str(value)
+                for value in cast(list[object], record.metadata.get("restricted_fields", []))
+            }
+            restricted_fields.update(current_fields)
+            sensitive_values.update(
+                str(shareable[field_name])
+                for field_name in current_fields
+                if field_name in shareable
+            )
+        classification_order = {"public": 0, "internal": 1, "restricted": 2}
+        return AgentMessage(
+            message_id=str(uuid4()),
+            task_id=task_id,
+            sender=self.domain,
+            recipient=recipient,
+            purpose="llm_domain_response",
+            classification=max(
+                (record.classification for record in records),
+                key=lambda value: classification_order[value.value],
+            ),
+            share_scope={recipient},
+            conclusion={"status": "grounded", "summary": synthesis.summary, **synthesis.facts},
+            evidence=[
+                Evidence(source_id=record.record_id, fragment_id=f"{record.record_id}:0")
+                for record in records
+            ],
+            restricted_fields=restricted_fields,
+            sensitive_values=sensitive_values,
+            telemetry={
+                "model": synthesis.model,
+                "prompt_tokens": synthesis.usage.prompt_tokens,
+                "completion_tokens": synthesis.usage.completion_tokens,
+                "total_tokens": synthesis.usage.total_tokens,
+                "llm_latency_ms": synthesis.latency_ms,
+            },
         )

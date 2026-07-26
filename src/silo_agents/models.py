@@ -36,7 +36,9 @@ class AgentMessage(BaseModel):
     conclusion: dict[str, Any] = Field(default_factory=dict)
     evidence: list[Evidence] = Field(default_factory=list)
     restricted_fields: set[str] = Field(default_factory=set)
+    sensitive_values: set[str] = Field(default_factory=set, exclude=True, repr=False)
     missing_information: list[str] = Field(default_factory=list)
+    telemetry: dict[str, int | float | str] = Field(default_factory=dict)
 
 
 class RetrievalRecord(BaseModel):
