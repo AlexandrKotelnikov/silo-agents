@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .agents import LLMDomainAgent
+from .agents import DomainAgent, LLMDomainAgent
 from .embeddings import Embedder
 from .llm import GroundedLLM
 from .models import Classification, Domain, RetrievalRecord
@@ -29,7 +29,7 @@ def build_qdrant_llm_system(
     max_classification: Classification = Classification.INTERNAL,
 ) -> BlindOrchestrator:
     domains = (Domain.PROCESS, Domain.MAINTENANCE, Domain.ECONOMICS)
-    agents = {}
+    agents: dict[Domain, DomainAgent] = {}
     for domain in domains:
         principal = RetrievalPrincipal(
             principal_id=f"{domain.value}-agent",
