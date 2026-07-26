@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+title: SiloAgents
+authors:
+  - family-names: Kotelnikov
+    given-names: Alexander
+message: "If you use this research software, please cite it using this metadata."
+type: software
+license: Apache-2.0
+repository-code: "https://github.com/AlexandrKotelnikov/silo-agents"
+version: 0.1.0
