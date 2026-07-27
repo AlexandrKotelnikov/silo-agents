@@ -48,7 +48,7 @@ _RUSSIAN_SUFFIXES = tuple(
     )
 )
 
-_ALIASES = {
+_DEFAULT_ALIASES = {
     "валют": "currency",
     "давлен": "pressure",
     "доход": "margin",
@@ -65,8 +65,13 @@ _ALIASES = {
 }
 
 
-def normalized_terms(text: str) -> set[str]:
+def normalized_terms(text: str, aliases: dict[str, str] | None = None) -> set[str]:
     """Return conservative bilingual terms for routing, never secret values."""
+    active_aliases = {_light_stem(key.casefold()): value.casefold() for key, value in _DEFAULT_ALIASES.items()}
+    if aliases:
+        active_aliases.update(
+            {_light_stem(key.casefold()): value.casefold() for key, value in aliases.items()}
+        )
     terms: set[str] = set()
     for raw in _TOKEN_RE.findall(text.casefold()):
         for part in re.split(r"[_%-]+", raw):
@@ -75,18 +80,13 @@ def normalized_terms(text: str) -> set[str]:
             normalized = _light_stem(part)
             if normalized and normalized not in _STOPWORDS and len(normalized) >= 2:
                 terms.add(normalized)
-                alias = _ALIASES.get(normalized)
+                alias = active_aliases.get(normalized)
                 if alias:
                     terms.add(alias)
     return terms
 
 
 def split_query_clauses(query: str) -> tuple[str, ...]:
-    """Split explicit English/Russian multi-aspect requests for independent routing.
-
-    A single-aspect query is returned unchanged. Empty or generic fragments are
-    discarded so words such as "and" or "assess" cannot summon an agent.
-    """
     stripped = query.strip()
     if not stripped:
         return ()
@@ -97,8 +97,7 @@ def split_query_clauses(query: str) -> tuple[str, ...]:
     return clauses if len(clauses) > 1 else (stripped,)
 
 
-def trusted_routing_text(record: RetrievalRecord) -> str:
-    """Build routing evidence from sanitized raw text and permitted field names."""
+def trusted_routing_text(record: RetrievalRecord, routing_terms: set[str] | None = None) -> str:
     shareable_raw: Any = record.metadata.get("shareable", {})
     shareable = cast(dict[str, Any], shareable_raw) if isinstance(shareable_raw, dict) else {}
     restricted = {
@@ -107,19 +106,45 @@ def trusted_routing_text(record: RetrievalRecord) -> str:
     }
     safe_keys = " ".join(key for key in shareable if key not in restricted)
     safe_text = _sanitize_text(record.text, _sensitive_values(record))
-    return " ".join((safe_text, safe_keys))
+    declared = " ".join(sorted(routing_terms or set()))
+    return " ".join((safe_text, safe_keys, declared))
 
 
-def routing_score(query: str, record: RetrievalRecord) -> float:
-    query_terms = normalized_terms(query)
+def routing_score(
+    query: str,
+    record: RetrievalRecord,
+    *,
+    routing_terms: set[str] | None = None,
+    routing_aliases: dict[str, str] | None = None,
+) -> float:
+    query_terms = normalized_terms(query, routing_aliases)
     if not query_terms:
         return 0.0
-    overlap = query_terms & normalized_terms(trusted_routing_text(record))
+    evidence_terms = normalized_terms(
+        trusted_routing_text(record, routing_terms), routing_aliases
+    )
+    overlap = query_terms & evidence_terms
     return len(overlap) / len(query_terms)
 
 
-def relevant_records(query: str, records: list[RetrievalRecord]) -> list[RetrievalRecord]:
-    return [record for record in records if routing_score(query, record) > 0]
+def relevant_records(
+    query: str,
+    records: list[RetrievalRecord],
+    *,
+    routing_terms: set[str] | None = None,
+    routing_aliases: dict[str, str] | None = None,
+) -> list[RetrievalRecord]:
+    return [
+        record
+        for record in records
+        if routing_score(
+            query,
+            record,
+            routing_terms=routing_terms,
+            routing_aliases=routing_aliases,
+        )
+        > 0
+    ]
 
 
 def safe_shareable(record: RetrievalRecord) -> dict[str, Any]:
@@ -133,7 +158,6 @@ def safe_shareable(record: RetrievalRecord) -> dict[str, Any]:
 
 
 def safe_llm_record(record: RetrievalRecord) -> RetrievalRecord:
-    """Project a record for the policy LLM without raw instructions or secrets."""
     summary = _safe_summary(record)
     return RetrievalRecord(
         record_id=record.record_id,
