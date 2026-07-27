@@ -14,7 +14,7 @@ from .datasets import load_cases, load_records
 from .demo import build_demo_system, demo_records
 from .embeddings import HashingEmbedder
 from .llm import DeterministicGroundedLLM, OpenAICompatibleGroundedLLM
-from .models import AgentMessage, Classification, Domain, Evidence, RetrievalRecord
+from .models import AgentId, AgentMessage, Classification, Domain, Evidence, RetrievalRecord
 from .orchestrator import (
     BlindOrchestrator,
     ExperimentMode,
@@ -22,13 +22,17 @@ from .orchestrator import (
     OrchestrationResult,
 )
 from .policy import PolicyGateway
+from .project import AgentRegistry, AgentSpec, PolicySpec, ProjectSpec, RoutingSpec
 from .qdrant import QdrantRestClient, QdrantRetriever
 from .rag import IsolatedKnowledgeBase, SharedKnowledgeBase
 from .runtime import build_qdrant_llm_system, ingest_qdrant
 from .security import RetrievalPrincipal
 
 __all__ = [
+    "AgentId",
     "AgentMessage",
+    "AgentRegistry",
+    "AgentSpec",
     "BenchmarkCase",
     "BenchmarkReport",
     "BlindOrchestrator",
@@ -51,10 +55,13 @@ __all__ = [
     "OpenAICompatibleGroundedLLM",
     "OrchestrationResult",
     "PolicyGateway",
+    "PolicySpec",
+    "ProjectSpec",
     "QdrantRestClient",
     "QdrantRetriever",
     "RetrievalPrincipal",
     "RetrievalRecord",
+    "RoutingSpec",
     "SharedKnowledgeBase",
     "build_demo_system",
     "build_qdrant_llm_system",
