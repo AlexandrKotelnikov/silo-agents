@@ -77,8 +77,7 @@ def normalized_terms(text: str) -> set[str]:
 
 
 def trusted_routing_text(record: RetrievalRecord) -> str:
-    """Build a routing projection without restricted values."""
-    summary = _safe_summary(record)
+    """Build routing evidence from sanitized raw text and permitted field names."""
     shareable_raw: Any = record.metadata.get("shareable", {})
     shareable = cast(dict[str, Any], shareable_raw) if isinstance(shareable_raw, dict) else {}
     restricted = {
@@ -86,7 +85,8 @@ def trusted_routing_text(record: RetrievalRecord) -> str:
         for value in cast(list[object], record.metadata.get("restricted_fields", []))
     }
     safe_keys = " ".join(key for key in shareable if key not in restricted)
-    return " ".join((_sanitize_text(record.text, _sensitive_values(record)), summary, safe_keys))
+    safe_text = _sanitize_text(record.text, _sensitive_values(record))
+    return " ".join((safe_text, safe_keys))
 
 
 def routing_score(query: str, record: RetrievalRecord) -> float:
