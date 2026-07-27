@@ -12,7 +12,7 @@ SiloAgents is a local research framework for testing whether any number of speci
 
 ## What problem it solves
 
-Organizations often place operations, finance, legal, maintenance, healthcare, or customer data into one RAG context. That is easy to build but difficult to govern. Separating retrievers helps, but an agent can still repeat restricted values from its own domain.
+Organizations often place operations, finance, legal, maintenance, healthcare, or customer data into one RAG context. That is easy to build but difficult to govern. Separating retrievers helps, but an agent can still repeat restricted values from its own knowledge base.
 
 SiloAgents lets you define knowledge boundaries and permitted information flows explicitly, then compare three designs on the same data and questions:
 
@@ -22,21 +22,63 @@ SiloAgents lets you define knowledge boundaries and permitted information flows 
 | `isolated_rag` | Separate retrieval per agent | Does isolation stop cross-domain contamination? |
 | `policy_gated` | Isolated retrieval plus deterministic message controls | Can security improve while useful answers remain complete? |
 
-## Create your own agents
+## Start a project without writing framework code
 
-Agents are no longer fixed to `process`, `maintenance`, and `economics`. A project can declare one, ten, or fifty agents in YAML without changing SiloAgents Python source code.
+```bash
+silo-agents init my-project
+cd my-project
+cp .env.example .env
+
+silo-agents agent add legal \
+  --term contract \
+  --term termination \
+  --alias договор=contract
+
+silo-agents agent add finance \
+  --term cost \
+  --term budget \
+  --alias стоимость=cost
+
+silo-agents validate
+silo-agents ingest
+silo-agents benchmark
+silo-agents utility
+silo-agents run "Assess contract termination and financial impact."
+```
+
+The generated workspace contains:
+
+```text
+my-project/
+├── silo-agents.yaml
+├── agents/
+├── corpus/records.jsonl
+├── benchmarks/tasks.jsonl
+├── reports/
+├── .env.example
+└── README.md
+```
+
+A new agent requires configuration and approved data, not a change to SiloAgents Python source.
+
+## Agent configuration
 
 ```yaml
 schema_version: 1
 name: contract-review
 
+paths:
+  corpus: corpus/records.jsonl
+  cases: benchmarks/tasks.jsonl
+  reports: reports
+
 orchestrator:
   max_agents_per_query: 8
 
 agents:
-  - id: contracts
+  - id: contract-reviewer
     name: Contracts Agent
-    description: Contract clauses, obligations and notice periods
+    knowledge_namespace: approved-contracts
     routing:
       terms: [contract, clause, termination, liability]
       aliases:
@@ -45,7 +87,6 @@ agents:
 
   - id: finance
     name: Finance Agent
-    description: Approved cost and financial-impact facts
     routing:
       terms: [cost, budget, payment, margin]
       aliases:
@@ -56,21 +97,7 @@ policy:
   default: deny
 ```
 
-Validate it:
-
-```bash
-silo-agents-project-validate examples/legal-finance/project.yaml
-```
-
-Run it against an ingested corpus whose `domain` fields match the configured IDs:
-
-```bash
-silo-agents-project-run \
-  --project examples/legal-finance/project.yaml \
-  "Assess termination conditions and financial impact."
-```
-
-A new agent requires configuration and approved data, not a framework code change.
+Agent identity and data namespace are separate. A document can belong to `approved-contracts`, while the answering agent is `contract-reviewer`.
 
 ## What you get
 
@@ -83,7 +110,8 @@ A new agent requires configuration and approved data, not a framework code chang
 - deterministic removal of restricted fields and secret-like values;
 - shared, isolated, and policy-gated benchmark modes;
 - leakage, contamination, abstention, provenance, latency, token, and utility reports;
-- a blind A/B/C human-review packet.
+- a blind A/B/C human-review packet;
+- project scaffolding, corpus validation, ingestion, benchmark and utility commands.
 
 ## Current experimental result
 
@@ -105,9 +133,7 @@ The answer-utility experiment over 16 normal cases produced:
 
 These are synthetic, single-repeat experiments, not production security certification. Their value is reproducibility and visible failure modes.
 
-## Practical blueprints
-
-The repository includes configurable examples for several fields:
+## Runnable cross-industry examples
 
 | Field | Example agents | Comparison focus |
 |---|---|---|
@@ -118,9 +144,18 @@ The repository includes configurable examples for several fields:
 | [Public services](examples/public-services/project.yaml) | eligibility, casework, fraud controls, privacy | Explain decisions without revealing internal fraud indicators |
 | [Software delivery](examples/software-delivery/project.yaml) | engineering, security, support, finance | Incident response without mixing exploits, customer data, and commercial terms |
 
-See [Practical use cases](docs/PRACTICAL_USE_CASES.md) for the full comparison of ordinary shared RAG, separate RAG agents, and SiloAgents, plus the metrics required to test each claim.
+The legal-finance example includes a complete corpus and benchmark:
 
-## Quick start on macOS
+```bash
+silo-agents validate --project examples/legal-finance/project.yaml
+silo-agents ingest --project examples/legal-finance/project.yaml
+silo-agents benchmark --project examples/legal-finance/project.yaml
+silo-agents utility --project examples/legal-finance/project.yaml
+```
+
+See [Practical use cases](docs/PRACTICAL_USE_CASES.md) for comparison with ordinary shared RAG and separate RAG agents.
+
+## Install on macOS
 
 Requirements: Python 3.11+, Docker Desktop, and Ollama.
 
@@ -139,46 +174,19 @@ docker compose up -d qdrant
 silo-agents-health
 ```
 
-Load the synthetic benchmark corpus:
+## Validation rules
 
-```bash
-silo-agents-ingest --corpus benchmarks/corpus_extended.jsonl
-```
+Before ingestion, `silo-agents validate` checks:
 
-Run the architecture comparison:
+- the project file can be parsed;
+- agent IDs and knowledge namespaces are unique;
+- corpus namespaces are declared by agents;
+- benchmark cases reference configured agent IDs;
+- corpus and task files exist;
+- fail-closed policy rules are valid;
+- routing vocabulary is present or reported as a warning.
 
-```bash
-silo-agents-live-compare \
-  --cases benchmarks/tasks_extended.jsonl \
-  --repeats 1 \
-  --output reports/comparison
-```
-
-Measure answer usefulness:
-
-```bash
-silo-agents-answer-utility \
-  --cases benchmarks/tasks_extended.jsonl \
-  --output reports/answer-utility
-```
-
-## Configuration contract
-
-Each agent declares:
-
-- a validated `id`;
-- a human-readable name and description;
-- a knowledge namespace;
-- maximum readable classification;
-- explicit routing terms and optional aliases.
-
-Each project declares:
-
-- orchestrator selection limits;
-- one or more agents;
-- fail-closed message routes.
-
-Invalid configurations fail before the model is called. Duplicate IDs, unknown policy recipients, the reserved `orchestrator` ID, and non-deny defaults are rejected.
+Invalid projects fail before an LLM call.
 
 ## Security properties under test
 
@@ -196,24 +204,17 @@ See [THREAT_MODEL.md](THREAT_MODEL.md) and [SECURITY.md](SECURITY.md).
 ## Repository map
 
 ```text
-benchmarks/                 Synthetic corpus and bilingual test cases
+benchmarks/                 Original synthetic benchmark
+examples/                   Config-driven cross-industry projects
+src/silo_agents/            Registry, workspace, routing, retrieval and policy
+tests/                      Unit, scale, workspace and Qdrant integration tests
 docs/                       Design, setup, diagrams and practical comparisons
-examples/                   Config-driven cross-industry agent blueprints
-src/silo_agents/            Registry, routing, retrieval, policy and benchmarks
-tests/                      Unit, scale and real-Qdrant integration tests
 docker-compose.yml          Local Qdrant and optional model services
 ```
 
 ## Use approved test data
 
-1. Copy a project blueprint.
-2. Define the required knowledge boundaries and policy routes.
-3. Create synthetic or approved JSONL records whose `domain` matches an agent ID.
-4. Mark every shareable and restricted field explicitly.
-5. Add normal, collaboration, abstention, and attack cases.
-6. Compare baselines and run blind utility review.
-
-Do not commit employer documents, credentials, patient data, student data, personal information, production tags, or confidential operational material.
+Do not commit employer documents, credentials, patient data, student data, personal information, production tags, or confidential operational material. Use synthetic or explicitly approved test data and mark every restricted field.
 
 ## What this is not
 
@@ -225,7 +226,7 @@ Do not commit employer documents, credentials, patient data, student data, perso
 
 ## Project status
 
-Research framework with a working local model-backed benchmark and config-driven N-agent core.
+Research framework with a working local model-backed benchmark, config-driven N-agent core, and complete project workflow.
 
 ## License
 
