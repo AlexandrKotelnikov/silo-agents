@@ -37,13 +37,27 @@ class AgentSpec(BaseModel):
             raise ValueError("orchestrator is reserved and cannot be declared as an agent")
         if self.knowledge_namespace is None:
             self.knowledge_namespace = self.id.value
+        # Reuse AgentId validation for namespace names.
+        AgentId(self.knowledge_namespace)
         return self
+
+    @property
+    def namespace_id(self) -> AgentId:
+        if self.knowledge_namespace is None:
+            raise ValueError("knowledge_namespace was not initialized")
+        return AgentId(self.knowledge_namespace)
 
 
 class OrchestratorSpec(BaseModel):
     id: AgentId = AgentId.ORCHESTRATOR
     max_agents_per_query: int = Field(default=8, ge=1, le=1000)
     relative_threshold: float = Field(default=0.5, gt=0, le=1)
+
+
+class ProjectPathsSpec(BaseModel):
+    corpus: str = "corpus/records.jsonl"
+    cases: str = "benchmarks/tasks.jsonl"
+    reports: str = "reports"
 
 
 class PolicySpec(BaseModel):
@@ -61,6 +75,7 @@ class ProjectSpec(BaseModel):
     schema_version: int = 1
     name: str
     orchestrator: OrchestratorSpec = Field(default_factory=OrchestratorSpec)
+    paths: ProjectPathsSpec = Field(default_factory=ProjectPathsSpec)
     agents: list[AgentSpec]
     policy: PolicySpec = Field(default_factory=PolicySpec)
 
@@ -71,6 +86,9 @@ class ProjectSpec(BaseModel):
             raise ValueError("A project must define at least one agent")
         if len(ids) != len(set(ids)):
             raise ValueError("Agent IDs must be unique")
+        namespaces = [agent.namespace_id for agent in self.agents]
+        if len(namespaces) != len(set(namespaces)):
+            raise ValueError("Knowledge namespaces must be unique")
         known = set(ids) | {self.orchestrator.id}
         for sender, recipients in self.policy.routes.items():
             if sender not in known:
@@ -93,10 +111,25 @@ class ProjectSpec(BaseModel):
             raise ValueError("Project configuration must be an object")
         return cls.model_validate(raw)
 
+    def write(self, path: str | Path) -> Path:
+        location = Path(path)
+        location.parent.mkdir(parents=True, exist_ok=True)
+        payload = self.model_dump(mode="json", exclude_none=True)
+        if location.suffix.casefold() == ".json":
+            location.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        else:
+            location.write_text(
+                yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8"
+            )
+        return location
+
     def allowed_routes(self) -> dict[AgentId, set[AgentId]]:
         if self.policy.routes:
             return {sender: set(recipients) for sender, recipients in self.policy.routes.items()}
         return {agent.id: {self.orchestrator.id} for agent in self.agents}
+
+    def namespace_to_agent(self) -> dict[AgentId, AgentId]:
+        return {agent.namespace_id: agent.id for agent in self.agents}
 
 
 class AgentRegistry:
@@ -124,15 +157,16 @@ class AgentRegistry:
     ) -> BlindOrchestrator:
         agents: dict[AgentId, DomainAgent] = {}
         for spec in self.project.agents:
+            namespace = spec.namespace_id
             principal = RetrievalPrincipal(
                 principal_id=f"{spec.id.value}-agent",
-                allowed_domains={spec.id},
+                allowed_domains={namespace},
                 max_classification=spec.max_classification,
             )
             retriever = QdrantRetriever(
                 client,
                 collection_name,
-                spec.id,
+                namespace,
                 principal,
                 embedder,
                 routing_terms=spec.routing.terms,
