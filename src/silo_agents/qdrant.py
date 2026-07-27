@@ -7,7 +7,7 @@ from uuid import NAMESPACE_URL, uuid5
 import httpx
 
 from .embeddings import Embedder
-from .models import Domain, RetrievalRecord
+from .models import AgentId, RetrievalRecord
 from .routing import relevant_records, routing_score
 from .security import RetrievalPrincipal
 
@@ -125,15 +125,18 @@ class QdrantRestClient:
 
 
 class QdrantRetriever:
-    """Retriever that binds one agent identity to one authorized domain."""
+    """Retriever that binds one agent identity to one authorized knowledge namespace."""
 
     def __init__(
         self,
         client: QdrantRestClient,
         collection_name: str,
-        domain: Domain,
+        domain: AgentId,
         principal: RetrievalPrincipal,
         embedder: Embedder,
+        *,
+        routing_terms: set[str] | None = None,
+        routing_aliases: dict[str, str] | None = None,
     ) -> None:
         principal.assert_domain(domain)
         self.client = client
@@ -141,15 +144,30 @@ class QdrantRetriever:
         self.domain = domain
         self.principal = principal
         self.embedder = embedder
+        self.routing_terms = routing_terms or set()
+        self.routing_aliases = routing_aliases or {}
 
     def search(self, query: str, *, limit: int = 3) -> list[RetrievalRecord]:
         points = self._query_points(query, limit=max(limit, 3))
         records = [self._validate_point(point) for point in points]
-        return relevant_records(query, records)[:limit]
+        return relevant_records(
+            query,
+            records,
+            routing_terms=self.routing_terms,
+            routing_aliases=self.routing_aliases,
+        )[:limit]
 
     def relevance_ack(self, query: str) -> float:
         points = self._query_points(query, limit=3)
-        scores = [routing_score(query, self._validate_point(point)) for point in points]
+        scores = [
+            routing_score(
+                query,
+                self._validate_point(point),
+                routing_terms=self.routing_terms,
+                routing_aliases=self.routing_aliases,
+            )
+            for point in points
+        ]
         return max(scores, default=0.0)
 
     def _query_points(self, query: str, *, limit: int) -> list[dict[str, Any]]:
