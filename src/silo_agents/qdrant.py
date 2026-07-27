@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid5
@@ -9,6 +8,7 @@ import httpx
 
 from .embeddings import Embedder
 from .models import Domain, RetrievalRecord
+from .routing import relevant_records, routing_score
 from .security import RetrievalPrincipal
 
 
@@ -143,26 +143,14 @@ class QdrantRetriever:
         self.embedder = embedder
 
     def search(self, query: str, *, limit: int = 3) -> list[RetrievalRecord]:
-        points = self._query_points(query, limit=limit)
-        return [self._validate_point(point) for point in points]
+        points = self._query_points(query, limit=max(limit, 3))
+        records = [self._validate_point(point) for point in points]
+        return relevant_records(query, records)[:limit]
 
     def relevance_ack(self, query: str) -> float:
-        """Return a conservative ACK from lexical evidence in a semantic shortlist.
-
-        Qdrant first limits the search to the agent's authorized domain and returns
-        the best semantic candidates. The ACK then requires explicit term overlap
-        with at least one validated candidate. This prevents broadly positive cosine
-        scores from routing unrelated requests while avoiding a single top-hit miss.
-        """
-        query_terms = _terms(query)
-        if not query_terms:
-            return 0.0
         points = self._query_points(query, limit=3)
-        best_overlap = 0
-        for point in points:
-            record = self._validate_point(point)
-            best_overlap = max(best_overlap, len(query_terms & _terms(record.text)))
-        return min(1.0, best_overlap / len(query_terms))
+        scores = [routing_score(query, self._validate_point(point)) for point in points]
+        return max(scores, default=0.0)
 
     def _query_points(self, query: str, *, limit: int) -> list[dict[str, Any]]:
         return self.client.query(
@@ -201,7 +189,3 @@ class QdrantRetriever:
                 }
             )
         return {"must": conditions}
-
-
-def _terms(text: str) -> set[str]:
-    return set(re.findall(r"[a-zA-Zа-яА-Я0-9_%-]+", text.casefold()))
