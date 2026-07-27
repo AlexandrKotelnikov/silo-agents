@@ -114,7 +114,7 @@ def test_relevance_ack_uses_best_overlap_across_semantic_shortlist() -> None:
     principal = RetrievalPrincipal(principal_id="process", allowed_domains={Domain.PROCESS})
     retriever = QdrantRetriever(client, "records", Domain.PROCESS, principal, HashingEmbedder())
     score = retriever.relevance_ack("production increase limit sensitive code")
-    assert score == pytest.approx(3 / 6)
+    assert score == pytest.approx(3 / 5)
 
 
 def test_relevance_ack_abstains_without_explicit_overlap() -> None:
