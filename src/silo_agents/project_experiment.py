@@ -6,12 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .answer_utility import (
-    UtilityCaseResult,
-    UtilityModeMetrics,
-    UtilityReport,
-)
-from .benchmark import BenchmarkCase, CaseKind
+from .answer_utility import UtilityCaseResult, UtilityModeMetrics, UtilityReport
+from .benchmark import CaseKind
 from .config import LiveSettings
 from .datasets import load_cases
 from .embeddings import OllamaEmbedder
@@ -22,7 +18,7 @@ from .live_compare import (
     _shared_run,
 )
 from .llm import OpenAICompatibleGroundedLLM
-from .models import AgentId
+from .models import AgentMessage
 from .orchestrator import ExperimentMode
 from .project import AgentRegistry, ProjectSpec
 from .qdrant import QdrantRestClient
@@ -246,7 +242,7 @@ def run_project_utility(
     )
 
 
-def _contains_expected(messages: list[Any], expected: dict[str, Any]) -> bool:
+def _contains_expected(messages: list[AgentMessage], expected: dict[str, Any]) -> bool:
     if not expected:
         return True
     payload = json.dumps([message.conclusion for message in messages], ensure_ascii=False)
