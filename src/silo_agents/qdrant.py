@@ -25,18 +25,26 @@ class QdrantRestClient:
     ) -> None:
         headers = {"api-key": api_key} if api_key else {}
         self._client = httpx.Client(
-            base_url=base_url.rstrip("/"),
-            headers=headers,
-            timeout=timeout,
-            transport=transport,
+            base_url=base_url.rstrip("/"), headers=headers, timeout=timeout, transport=transport
         )
 
     def close(self) -> None:
         self._client.close()
 
+    def health(self) -> bool:
+        response = self._client.get("/collections")
+        response.raise_for_status()
+        return True
+
     def ensure_collection(self, collection_name: str, vector_size: int) -> None:
         response = self._client.get(f"/collections/{collection_name}")
         if response.status_code == 200:
+            existing = self._extract_vector_size(response.json())
+            if existing != vector_size:
+                raise ValueError(
+                    f"Collection {collection_name!r} uses {existing} dimensions; "
+                    f"the embedder returned {vector_size}. Delete/recreate the collection."
+                )
             return
         if response.status_code != 404:
             response.raise_for_status()
@@ -45,6 +53,24 @@ class QdrantRestClient:
             json={"vectors": {"size": vector_size, "distance": "Cosine"}},
         )
         created.raise_for_status()
+
+    @staticmethod
+    def _extract_vector_size(raw: Any) -> int:
+        if not isinstance(raw, dict):
+            raise ValueError("Qdrant collection response must be an object")
+        result = raw.get("result")
+        if not isinstance(result, dict):
+            raise ValueError("Qdrant collection response omitted result")
+        config = result.get("config")
+        if not isinstance(config, dict):
+            raise ValueError("Qdrant collection response omitted config")
+        params = config.get("params")
+        if not isinstance(params, dict):
+            raise ValueError("Qdrant collection response omitted params")
+        vectors = params.get("vectors")
+        if not isinstance(vectors, dict) or not isinstance(vectors.get("size"), int):
+            raise ValueError("Only a single unnamed Qdrant vector is supported")
+        return int(vectors["size"])
 
     def upsert_records(
         self,
