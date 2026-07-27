@@ -1,28 +1,102 @@
 # SiloAgents
 
-[![CI](https://github.com/AlexandrKotelnikov/silo-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/AlexandrKotelnikov/silo-agents/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+<p align="center">
+  <strong>Build and benchmark policy-governed multi-agent RAG systems from configuration.</strong>
+</p>
 
-**Create and benchmark policy-governed AI agent systems from configuration.**
+<p align="center">
+  <a href="README_RU.md">Русская версия</a> ·
+  <a href="docs/PRACTICAL_USE_CASES.md">Use cases</a> ·
+  <a href="THREAT_MODEL.md">Threat model</a> ·
+  <a href="SECURITY.md">Security</a>
+</p>
 
-SiloAgents is a local research framework for testing whether any number of specialized AI agents can collaborate across private knowledge bases without leaking restricted data or losing answer quality.
+<p align="center">
+  <a href="https://github.com/AlexandrKotelnikov/silo-agents/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/AlexandrKotelnikov/silo-agents/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-blue.svg">
+  <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg">
+  <img alt="Local first" src="https://img.shields.io/badge/local--first-Qdrant%20%2B%20Ollama-0A7E8C">
+</p>
 
 ![How SiloAgents works](docs/assets/how-silo-agents-works.svg)
 
-## What problem it solves
+## What is this?
 
-Organizations often place operations, finance, legal, maintenance, healthcare, or customer data into one RAG context. That is easy to build but difficult to govern. Separating retrievers helps, but an agent can still repeat restricted values from its own knowledge base.
+SiloAgents is a local framework for creating any number of specialized AI agents with separate knowledge bases, explicit information-sharing rules, and reproducible security and answer-quality benchmarks.
 
-SiloAgents lets you define knowledge boundaries and permitted information flows explicitly, then compare three designs on the same data and questions:
+It lets you answer a practical question before deploying enterprise multi-agent RAG:
 
-| Architecture | Design | Main question |
-|---|---|---|
-| `shared_rag` | One mixed context | What does the simplest baseline expose or miss? |
-| `isolated_rag` | Separate retrieval per agent | Does isolation stop cross-domain contamination? |
-| `policy_gated` | Isolated retrieval plus deterministic message controls | Can security improve while useful answers remain complete? |
+> Can several AI agents collaborate on private data without leaking restricted values, mixing unrelated domains, or becoming useless after security controls are applied?
 
-## Start a project without writing framework code
+## Why would I use it?
+
+Use SiloAgents when one shared RAG context is too risky and isolated agents alone are not enough.
+
+| Without SiloAgents | With SiloAgents |
+|---|---|
+| Documents from several functions enter one context | Every agent receives its own retrieval identity and namespace |
+| An isolated agent may still repeat secrets from its own data | Restricted fields and secret-like values are removed deterministically |
+| Multi-agent output is a collection of unrelated messages | Policy-approved messages are synthesized into one auditable answer |
+| Security claims are difficult to verify | Shared, isolated, and policy-gated designs run on the same benchmark |
+| Adding agents requires framework code changes | Agents, routing aliases, namespaces, and routes are configured in YAML |
+
+Typical uses include manufacturing, healthcare, legal review, finance, education, public services, software delivery, and any workflow where several specialists must cooperate without unrestricted data sharing.
+
+## Proven result on the included synthetic benchmark
+
+Apple M3 / 8 GB, `qwen3:4b-instruct`, `embeddinggemma`, 28 bilingual cases, one repeat:
+
+| Mode | Routing | Task | Leakage | Contamination | Abstention |
+|---|---:|---:|---:|---:|---:|
+| `shared_rag` | 33.3% | 62.5% | 42.9% | 32.1% | 75.0% |
+| `isolated_rag` | 100.0% | 87.5% | 50.0% | 0.0% | 100.0% |
+| `policy_gated` | **100.0%** | **100.0%** | **0.0%** | **0.0%** | **100.0%** |
+
+These are synthetic, single-repeat results, not a production security certification. The repository is designed to make the assumptions, failures, and trade-offs reproducible.
+
+## Install
+
+Requirements: Python 3.11+, Docker, and Ollama.
+
+### Automated setup
+
+```bash
+git clone https://github.com/AlexandrKotelnikov/silo-agents.git
+cd silo-agents
+bash scripts/setup.sh --with-models
+source .venv/bin/activate
+silo-agents-health
+```
+
+The script creates `.venv`, installs the package, creates `.env`, starts Qdrant, and optionally downloads the local models. Run `bash scripts/setup.sh --no-qdrant` when Qdrant is managed separately.
+
+### Manual setup
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+docker compose up -d qdrant
+ollama pull qwen3:4b-instruct
+ollama pull embeddinggemma
+silo-agents-health
+```
+
+## Try the complete example
+
+```bash
+silo-agents validate --project examples/legal-finance/project.yaml
+silo-agents ingest --project examples/legal-finance/project.yaml
+silo-agents benchmark --project examples/legal-finance/project.yaml
+silo-agents utility --project examples/legal-finance/project.yaml
+silo-agents run --project examples/legal-finance/project.yaml \
+  "Assess contract termination and financial impact."
+```
+
+The final command returns one synthesized answer, approved facts, contributing agents, sources, conflicts, and missing information. Add `--trace` to inspect the approved internal messages and policy decisions.
+
+## Create your own project
 
 ```bash
 silo-agents init my-project
@@ -46,7 +120,7 @@ silo-agents utility
 silo-agents run "Assess contract termination and financial impact."
 ```
 
-The generated workspace contains:
+Generated structure:
 
 ```text
 my-project/
@@ -59,174 +133,78 @@ my-project/
 └── README.md
 ```
 
-A new agent requires configuration and approved data, not a change to SiloAgents Python source.
+A new agent requires configuration and approved data, not a modification to the framework source.
 
-## Agent configuration
+## How it works
+
+```text
+User query
+  → clause-aware routing
+  → N isolated retrieval identities
+  → domain agents
+  → deny-by-default Policy Gateway
+  → deterministic final synthesis
+  → one answer with provenance, conflicts, and missing information
+```
+
+Agent identity and data storage are separate:
 
 ```yaml
-schema_version: 1
-name: contract-review
-
-paths:
-  corpus: corpus/records.jsonl
-  cases: benchmarks/tasks.jsonl
-  reports: reports
-
-orchestrator:
-  max_agents_per_query: 8
-
 agents:
   - id: contract-reviewer
-    name: Contracts Agent
     knowledge_namespace: approved-contracts
     routing:
-      terms: [contract, clause, termination, liability]
+      terms: [contract, termination, liability]
       aliases:
         договор: contract
-        расторжение: termination
-
-  - id: finance
-    name: Finance Agent
-    routing:
-      terms: [cost, budget, payment, margin]
-      aliases:
-        стоимость: cost
-        бюджет: budget
-
 policy:
   default: deny
 ```
 
-Agent identity and data namespace are separate. A document can belong to `approved-contracts`, while the answering agent is `contract-reviewer`.
+Documents use the configured namespace, while policy messages use the agent ID.
 
 ## What you get
 
-- dynamic agent IDs and an `AgentRegistry`;
-- one retrieval principal and knowledge namespace per agent;
-- configurable routing terms and multilingual aliases;
-- fail-closed policy routes;
-- clause-aware selection of multiple relevant agents;
-- Qdrant retrieval-time authorization;
+- arbitrary N-agent projects defined in YAML;
+- separate Qdrant retrieval principals and knowledge namespaces;
+- multilingual routing terms and aliases;
+- fail-closed agent-to-agent routes;
 - deterministic removal of restricted fields and secret-like values;
-- shared, isolated, and policy-gated benchmark modes;
-- leakage, contamination, abstention, provenance, latency, token, and utility reports;
-- a blind A/B/C human-review packet;
-- project scaffolding, corpus validation, ingestion, benchmark and utility commands.
+- one final synthesized answer plus optional audit trace;
+- shared, isolated, and policy-gated comparisons;
+- leakage, contamination, routing, abstention, provenance, latency, token, and utility metrics;
+- blind A/B/C human-review packets;
+- project scaffolding, validation, ingestion, benchmark, and utility commands.
 
-## Current experimental result
+## Examples by field
 
-A local Apple M3 / 8 GB run with `qwen3:4b-instruct`, `embeddinggemma`, 28 bilingual cases, and one repeat produced:
-
-| Mode | Routing | Task | Leakage | Contamination | Abstention | Mean tokens |
-|---|---:|---:|---:|---:|---:|---:|
-| `shared_rag` | 33.3% | 62.5% | 42.9% | 32.1% | 75.0% | 364.7 |
-| `isolated_rag` | 100.0% | 87.5% | 50.0% | 0.0% | 100.0% | 492.9 |
-| `policy_gated` | **100.0%** | **100.0%** | **0.0%** | **0.0%** | **100.0%** | **373.8** |
-
-The answer-utility experiment over 16 normal cases produced:
-
-| Mode | Fact coverage | Safe success | Leakage | Useful facts / 1k tokens |
-|---|---:|---:|---:|---:|
-| `shared_rag` | 70.8% | 25.0% | 31.2% | 3.27 |
-| `isolated_rag` | 93.8% | 56.2% | 43.8% | 2.63 |
-| `policy_gated` | **100.0%** | **100.0%** | **0.0%** | **3.94** |
-
-These are synthetic, single-repeat experiments, not production security certification. Their value is reproducibility and visible failure modes.
-
-## Runnable cross-industry examples
-
-| Field | Example agents | Comparison focus |
+| Field | Agents | Main comparison |
 |---|---|---|
-| [Manufacturing](examples/manufacturing/project.yaml) | operations, maintenance, economics, safety | Throughput decisions without exposing safety or maintenance codes |
-| [Healthcare](examples/healthcare/project.yaml) | clinical guidance, pharmacy, billing, privacy | Care coordination without unnecessary identifiers |
+| [Manufacturing](examples/manufacturing/project.yaml) | operations, maintenance, economics, safety | Throughput decisions without exposing safety and maintenance codes |
+| [Healthcare](examples/healthcare/project.yaml) | clinical guidance, pharmacy, billing, privacy | Coordination without unnecessary identifiers |
 | [Legal and finance](examples/legal-finance/project.yaml) | contracts, compliance, finance, procurement | Contract impact without negotiation-data leakage |
-| [Education](examples/education/project.yaml) | curriculum, support, accessibility, financial aid | Integrated plans without exposing unrelated student data |
-| [Public services](examples/public-services/project.yaml) | eligibility, casework, fraud controls, privacy | Explain decisions without revealing internal fraud indicators |
+| [Education](examples/education/project.yaml) | curriculum, support, accessibility, financial aid | Integrated support without unrelated student data |
+| [Public services](examples/public-services/project.yaml) | eligibility, casework, fraud controls, privacy | Explain decisions without revealing fraud indicators |
 | [Software delivery](examples/software-delivery/project.yaml) | engineering, security, support, finance | Incident response without mixing exploits, customer data, and commercial terms |
 
-The legal-finance example includes a complete corpus and benchmark:
+See [Practical use cases](docs/PRACTICAL_USE_CASES.md) for detailed comparisons with ordinary shared RAG and separate RAG agents.
 
-```bash
-silo-agents validate --project examples/legal-finance/project.yaml
-silo-agents ingest --project examples/legal-finance/project.yaml
-silo-agents benchmark --project examples/legal-finance/project.yaml
-silo-agents utility --project examples/legal-finance/project.yaml
-```
+## Safety boundaries
 
-See [Practical use cases](docs/PRACTICAL_USE_CASES.md) for comparison with ordinary shared RAG and separate RAG agents.
-
-## Install on macOS
-
-Requirements: Python 3.11+, Docker Desktop, and Ollama.
-
-```bash
-ollama pull qwen3:4b-instruct
-ollama pull embeddinggemma
-
-git clone https://github.com/AlexandrKotelnikov/silo-agents.git
-cd silo-agents
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env
-
-docker compose up -d qdrant
-silo-agents-health
-```
-
-## Validation rules
-
-Before ingestion, `silo-agents validate` checks:
-
-- the project file can be parsed;
-- agent IDs and knowledge namespaces are unique;
-- corpus namespaces are declared by agents;
-- benchmark cases reference configured agent IDs;
-- corpus and task files exist;
-- fail-closed policy rules are valid;
-- routing vocabulary is present or reported as a warning.
-
-Invalid projects fail before an LLM call.
-
-## Security properties under test
-
-- Authorization is applied before retrieval.
-- Every agent has a separate service identity.
-- The orchestrator does not receive raw documents in `policy_gated` mode.
-- Retrieved instructions are removed from the policy LLM context.
-- Restricted fields are removed by deterministic code.
-- Known and secret-like values are recursively redacted.
-- Missing provenance causes denial.
-- Routes default to deny.
+SiloAgents is a research framework, not a production IAM system or a guarantee that any model will never leak. Use synthetic or explicitly approved test data. Do not commit employer documents, credentials, patient data, personal information, production tags, or confidential operational material.
 
 See [THREAT_MODEL.md](THREAT_MODEL.md) and [SECURITY.md](SECURITY.md).
 
 ## Repository map
 
 ```text
-benchmarks/                 Original synthetic benchmark
-examples/                   Config-driven cross-industry projects
-src/silo_agents/            Registry, workspace, routing, retrieval and policy
+src/silo_agents/            Registry, routing, retrieval, policy, synthesis and benchmarks
+examples/                   Cross-industry configurable projects
+benchmarks/                 Original bilingual synthetic experiment
+docs/                       Architecture, use cases and setup guidance
 tests/                      Unit, scale, workspace and Qdrant integration tests
-docs/                       Design, setup, diagrams and practical comparisons
-docker-compose.yml          Local Qdrant and optional model services
+scripts/setup.sh             Automated local installation
 ```
-
-## Use approved test data
-
-Do not commit employer documents, credentials, patient data, student data, personal information, production tags, or confidential operational material. Use synthetic or explicitly approved test data and mark every restricted field.
-
-## What this is not
-
-- not a production IAM system;
-- not a guarantee that an arbitrary LLM will never leak data;
-- not a substitute for security, legal, medical, privacy, or domain review;
-- not yet a visual no-code agent builder;
-- not dependent on a cloud LLM or proprietary vector database.
-
-## Project status
-
-Research framework with a working local model-backed benchmark, config-driven N-agent core, and complete project workflow.
 
 ## License
 
