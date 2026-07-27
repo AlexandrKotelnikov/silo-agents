@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "silo-agents"
-version = "0.3.0"
+version = "0.4.0"
 description = "Policy-governed collaboration between AI agents with isolated RAG, memory, and tools"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,9 +17,14 @@ dev = ["pytest>=8.2", "ruff==0.16.0", "mypy>=1.10"]
 
 [project.scripts]
 silo-agents-benchmark = "silo_agents.experiment:main"
+silo-agents-health = "silo_agents.live:health_main"
+silo-agents-ingest = "silo_agents.live:ingest_main"
+silo-agents-live-run = "silo_agents.live:run_main"
+silo-agents-live-benchmark = "silo_agents.live:benchmark_main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+markers = ["integration: requires an external service such as Qdrant"]
 
 [tool.ruff]
 target-version = "py311"
