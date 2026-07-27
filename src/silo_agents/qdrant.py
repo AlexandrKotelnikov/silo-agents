@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid5
@@ -146,14 +147,22 @@ class QdrantRetriever:
         return [self._validate_point(point) for point in points]
 
     def relevance_ack(self, query: str) -> float:
-        points = self._query_points(query, limit=1)
-        if not points:
+        """Return a conservative ACK from lexical evidence in a semantic shortlist.
+
+        Qdrant first limits the search to the agent's authorized domain and returns
+        the best semantic candidates. The ACK then requires explicit term overlap
+        with at least one validated candidate. This prevents broadly positive cosine
+        scores from routing unrelated requests while avoiding a single top-hit miss.
+        """
+        query_terms = _terms(query)
+        if not query_terms:
             return 0.0
-        self._validate_point(points[0])
-        raw_score = points[0].get("score")
-        if not isinstance(raw_score, int | float):
-            raise ValueError("Qdrant result omitted the semantic relevance score")
-        return max(0.0, min(1.0, float(raw_score)))
+        points = self._query_points(query, limit=3)
+        best_overlap = 0
+        for point in points:
+            record = self._validate_point(point)
+            best_overlap = max(best_overlap, len(query_terms & _terms(record.text)))
+        return min(1.0, best_overlap / len(query_terms))
 
     def _query_points(self, query: str, *, limit: int) -> list[dict[str, Any]]:
         return self.client.query(
@@ -192,3 +201,7 @@ class QdrantRetriever:
                 }
             )
         return {"must": conditions}
+
+
+def _terms(text: str) -> set[str]:
+    return set(re.findall(r"[a-zA-Zа-яА-Я0-9_%-]+", text.casefold()))
