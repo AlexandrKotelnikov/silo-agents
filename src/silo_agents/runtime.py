@@ -27,6 +27,7 @@ def build_qdrant_llm_system(
     llm: GroundedLLM,
     *,
     max_classification: Classification = Classification.INTERNAL,
+    safe_context: bool = True,
 ) -> BlindOrchestrator:
     domains = (Domain.PROCESS, Domain.MAINTENANCE, Domain.ECONOMICS)
     agents: dict[Domain, DomainAgent] = {}
@@ -37,6 +38,11 @@ def build_qdrant_llm_system(
             max_classification=max_classification,
         )
         retriever = QdrantRetriever(client, collection_name, domain, principal, embedder)
-        agents[domain] = LLMDomainAgent(domain, retriever, llm)
+        agents[domain] = LLMDomainAgent(
+            domain,
+            retriever,
+            llm,
+            safe_context=safe_context,
+        )
     routes = {domain: {Domain.ORCHESTRATOR} for domain in domains}
     return BlindOrchestrator(agents, PolicyGateway(routes))
