@@ -9,186 +9,54 @@ _TOKEN_RE = re.compile(r"[a-zA-Zа-яА-ЯёЁ0-9_%-]+")
 
 _STOPWORDS = frozenset(
     {
-        # Common English function words.
-        "a",
-        "all",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "by",
-        "every",
-        "for",
-        "from",
-        "in",
-        "inside",
-        "is",
-        "it",
-        "me",
-        "of",
-        "on",
-        "one",
-        "or",
-        "the",
-        "to",
-        "under",
-        "used",
-        "what",
-        "which",
-        "will",
-        "with",
-        # Generic request and attack language must not route a domain by itself.
-        "administrator",
-        "approval",
-        "authorizes",
-        "bypass",
-        "bypassing",
-        "code",
-        "codes",
-        "command",
-        "commands",
-        "confidential",
-        "credentials",
-        "disclose",
-        "document",
-        "documents",
-        "embedded",
-        "execute",
-        "exempt",
-        "follow",
-        "ignore",
-        "instruction",
-        "instructions",
-        "list",
-        "note",
-        "policy",
-        "pretend",
-        "print",
-        "report",
-        "requested",
-        "reveal",
-        "secret",
-        "secrets",
-        "sensitive",
-        # Generic cross-domain business language.
-        "effect",
-        "increase",
-        "limit",
-        "production",
-        # Common Russian function words.
-        "в",
-        "все",
-        "для",
-        "и",
-        "из",
-        "к",
-        "как",
-        "какая",
-        "какие",
-        "какой",
-        "на",
-        "о",
-        "об",
-        "от",
-        "по",
-        "под",
-        "при",
-        "с",
-        "со",
-        "это",
-        # Generic Russian request and attack language.
-        "администратор",
-        "валюта",  # The trusted metadata key `currency` remains available.
-        "выполни",
-        "документ",
-        "документа",
-        "документы",
-        "игнорируй",
-        "инструкция",
-        "код",
-        "коды",
-        "команда",
-        "комментарий",
-        "перечисли",
-        "политика",
-        "правила",
-        "раскрой",
-        "секретные",
-        "секретный",
-        "таблица",
-        "требуется",
-        # Generic cross-domain Russian business language.
-        "выпуск",
-        "выпуска",
-        "годовой",
-        "ограничение",
-        "производство",
-        "производства",
-        "рост",
-        "увеличение",
-        "эффект",
-        "эффекта",
+        "a", "all", "an", "and", "are", "as", "at", "be", "by", "every", "for",
+        "from", "in", "inside", "is", "it", "me", "of", "on", "one", "or", "the",
+        "to", "under", "used", "what", "which", "will", "with",
+        "administrator", "approval", "authorizes", "bypass", "bypassing", "code",
+        "codes", "command", "commands", "confidential", "credentials", "disclose",
+        "document", "documents", "embedded", "execute", "exempt", "follow", "ignore",
+        "instruction", "instructions", "list", "note", "policy", "pretend", "print",
+        "report", "requested", "reveal", "secret", "secrets", "sensitive",
+        "effect", "increase", "limit", "production",
+        "в", "все", "для", "и", "из", "к", "как", "какая", "какие", "какой", "на",
+        "о", "об", "от", "по", "под", "при", "с", "со", "это",
+        "администратор", "выполни", "документ", "документа", "документы", "игнорируй",
+        "инструкция", "код", "коды", "команда", "комментарий", "перечисли", "политика",
+        "правила", "раскрой", "секретные", "секретный", "таблица", "требуется",
+        "выпуск", "выпуска", "годовой", "ограничение", "производство", "производства",
+        "рост", "увеличение", "эффект", "эффекта",
     }
 )
 
 _RUSSIAN_SUFFIXES = tuple(
     sorted(
         {
-            "иями",
-            "ями",
-            "ами",
-            "его",
-            "ого",
-            "ему",
-            "ому",
-            "ыми",
-            "ими",
-            "ией",
-            "иям",
-            "иях",
-            "ать",
-            "ять",
-            "ить",
-            "еть",
-            "ую",
-            "юю",
-            "ая",
-            "яя",
-            "ое",
-            "ее",
-            "ые",
-            "ие",
-            "ый",
-            "ий",
-            "ой",
-            "ым",
-            "им",
-            "ом",
-            "ем",
-            "ах",
-            "ях",
-            "ам",
-            "ям",
-            "ов",
-            "ев",
-            "ия",
-            "ию",
-            "ью",
-            "а",
-            "я",
-            "ы",
-            "и",
-            "у",
-            "ю",
-            "е",
-            "о",
+            "иями", "ями", "ами", "его", "ого", "ему", "ому", "ыми", "ими", "ией",
+            "иям", "иях", "ать", "ять", "ить", "еть", "ую", "юю", "ая", "яя", "ое",
+            "ее", "ые", "ие", "ый", "ий", "ой", "ым", "им", "ом", "ем", "ах", "ях",
+            "ам", "ям", "ов", "ев", "ия", "ию", "ью", "а", "я", "ы", "и", "у", "ю",
+            "е", "о",
         },
         key=len,
         reverse=True,
     )
 )
+
+_ALIASES = {
+    "валют": "currency",
+    "давлен": "pressure",
+    "доход": "margin",
+    "маржинальн": "margin",
+    "насос": "pump",
+    "охлажден": "cooling",
+    "подшипник": "bearing",
+    "реактор": "reactor",
+    "ремонт": "maintenance",
+    "риск": "risk",
+    "сценарн": "scenario",
+    "сырь": "material",
+    "энерг": "energy",
+}
 
 
 def normalized_terms(text: str) -> set[str]:
@@ -201,16 +69,14 @@ def normalized_terms(text: str) -> set[str]:
             normalized = _light_stem(part)
             if normalized and normalized not in _STOPWORDS and len(normalized) >= 2:
                 terms.add(normalized)
+                alias = _ALIASES.get(normalized)
+                if alias:
+                    terms.add(alias)
     return terms
 
 
 def trusted_routing_text(record: RetrievalRecord) -> str:
-    """Build a routing projection without restricted values.
-
-    Raw text remains useful for domain terminology, while metadata contributes only
-    the trusted summary and non-restricted field names. Values from restricted fields
-    are never included in the projection.
-    """
+    """Build a routing projection without restricted values."""
     restricted = {
         str(value)
         for value in cast(list[object], record.metadata.get("restricted_fields", []))
@@ -231,7 +97,6 @@ def routing_score(query: str, record: RetrievalRecord) -> float:
 
 
 def relevant_records(query: str, records: list[RetrievalRecord]) -> list[RetrievalRecord]:
-    """Keep semantically retrieved records that also have explicit trusted evidence."""
     return [record for record in records if routing_score(query, record) > 0]
 
 
