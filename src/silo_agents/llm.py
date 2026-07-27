@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any, Protocol, cast
 
@@ -62,6 +63,11 @@ class OpenAICompatibleGroundedLLM:
         retry_backoff_seconds: float = 2.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
+        timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", str(timeout)))
+        max_retries = int(os.getenv("LLM_MAX_RETRIES", str(max_retries)))
+        retry_backoff_seconds = float(
+            os.getenv("LLM_RETRY_BACKOFF_SECONDS", str(retry_backoff_seconds))
+        )
         if timeout <= 0:
             raise ValueError("timeout must be positive")
         if max_retries < 0:
