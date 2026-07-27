@@ -17,7 +17,7 @@ from .datasets import load_cases
 from .embeddings import OllamaEmbedder
 from .live_compare import _shared_run
 from .llm import OpenAICompatibleGroundedLLM
-from .models import AgentMessage, Domain
+from .models import Domain
 from .orchestrator import ExperimentMode
 from .qdrant import QdrantRestClient
 from .runtime import build_qdrant_llm_system
