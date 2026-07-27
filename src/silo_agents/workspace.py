@@ -7,10 +7,11 @@ from typing import Any
 
 import yaml
 
+from .benchmark import BenchmarkCase
 from .config import LiveSettings
 from .datasets import load_cases, load_records
 from .live import build_live_components
-from .models import AgentId
+from .models import AgentId, RetrievalRecord
 from .project import AgentSpec, ProjectSpec, RoutingSpec
 from .project_cli import run_project
 from .project_experiment import (
@@ -92,8 +93,8 @@ def validate_workspace(project_path: Path) -> dict[str, Any]:
     cases_path = root / project.paths.cases
     errors: list[str] = []
     warnings: list[str] = []
-    records = []
-    cases = []
+    records: list[RetrievalRecord] = []
+    cases: list[BenchmarkCase] = []
     if not corpus_path.exists():
         errors.append(f"Missing corpus: {corpus_path}")
     else:
@@ -117,8 +118,9 @@ def validate_workspace(project_path: Path) -> dict[str, Any]:
             "No records for namespaces: "
             + ", ".join(sorted(item.value for item in missing_namespaces))
         )
-    expected_sets = [case.expected_domains for case in cases]
-    expected = set().union(*expected_sets) if expected_sets else set()
+    expected: set[AgentId] = set()
+    for case in cases:
+        expected.update(case.expected_domains)
     unknown_expected = expected - agent_ids
     if unknown_expected:
         errors.append(
@@ -139,9 +141,9 @@ def validate_workspace(project_path: Path) -> dict[str, Any]:
 
 
 def ingest_project(project_path: Path, settings: LiveSettings) -> int:
-    project, corpus_path, _, _ = resolve_project_paths(project_path)
+    _, corpus_path, _, _ = resolve_project_paths(project_path)
     validation = validate_workspace(project_path)
-    if not validation["ok"]:
+    if not bool(validation["ok"]):
         raise ValueError("Project validation failed before ingest")
     records = load_records(corpus_path)
     client, embedder, llm = build_live_components(settings)
@@ -269,7 +271,7 @@ def main() -> None:
         print(f"Created SiloAgents project: {path}")
         return
     if args.command == "agent" and args.agent_command == "add":
-        alias_map = {}
+        alias_map: dict[str, str] = {}
         for raw in args.alias:
             if "=" not in raw:
                 raise SystemExit("--alias must use SOURCE=TARGET")
@@ -295,7 +297,7 @@ def main() -> None:
     if args.command == "validate":
         result = validate_workspace(project_path)
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        if not result["ok"]:
+        if not bool(result["ok"]):
             raise SystemExit(1)
         return
     if args.command == "ingest":
