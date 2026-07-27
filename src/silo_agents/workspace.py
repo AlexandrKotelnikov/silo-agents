@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +9,16 @@ import yaml
 
 from .config import LiveSettings
 from .datasets import load_cases, load_records
+from .live import build_live_components
 from .models import AgentId
 from .project import AgentSpec, ProjectSpec, RoutingSpec
 from .project_cli import run_project
+from .project_experiment import (
+    resolve_project_paths,
+    run_project_comparison,
+    run_project_utility,
+)
+from .runtime import ingest_qdrant
 
 
 def init_project(destination: Path, name: str | None = None, *, force: bool = False) -> Path:
@@ -28,7 +34,7 @@ def init_project(destination: Path, name: str | None = None, *, force: bool = Fa
                 id=AgentId("general"),
                 name="General Agent",
                 description="Replace this starter agent with a specialized role.",
-                routing=RoutingSpec(terms={"example", "starter"}),
+                routing=RoutingSpec(terms={"example", "starter", "value"}),
             )
         ],
     )
@@ -111,7 +117,9 @@ def validate_workspace(project_path: Path) -> dict[str, Any]:
             "No records for namespaces: "
             + ", ".join(sorted(item.value for item in missing_namespaces))
         )
-    unknown_expected = set().union(*(case.expected_domains for case in cases)) - agent_ids
+    expected_sets = [case.expected_domains for case in cases]
+    expected = set().union(*expected_sets) if expected_sets else set()
+    unknown_expected = expected - agent_ids
     if unknown_expected:
         errors.append(
             "Cases expect unknown agents: "
@@ -130,6 +138,22 @@ def validate_workspace(project_path: Path) -> dict[str, Any]:
     }
 
 
+def ingest_project(project_path: Path, settings: LiveSettings) -> int:
+    project, corpus_path, _, _ = resolve_project_paths(project_path)
+    validation = validate_workspace(project_path)
+    if not validation["ok"]:
+        raise ValueError("Project validation failed before ingest")
+    records = load_records(corpus_path)
+    client, embedder, llm = build_live_components(settings)
+    try:
+        ingest_qdrant(client, settings.qdrant_collection, records, embedder)
+    finally:
+        llm.close()
+        embedder.close()
+        client.close()
+    return len(records)
+
+
 def _write_if_missing(path: Path, content: str) -> None:
     if not path.exists():
         path.write_text(content, encoding="utf-8")
@@ -140,7 +164,7 @@ def _starter_record() -> str:
         {
             "record_id": "GENERAL-001",
             "domain": "general",
-            "text": "Starter example record for a configurable SiloAgents project.",
+            "text": "Starter example value for a configurable SiloAgents project.",
             "classification": "internal",
             "metadata": {
                 "summary": "Starter project record",
@@ -187,6 +211,7 @@ silo-agents validate
 silo-agents ingest
 silo-agents benchmark
 silo-agents utility
+silo-agents run "What example value is in the starter record?"
 ```
 
 Replace the starter agent, corpus record and benchmark case with synthetic or approved data.
@@ -222,6 +247,18 @@ def main() -> None:
     validate_parser = subparsers.add_parser("validate", help="Validate project, corpus and cases")
     validate_parser.add_argument("--project")
 
+    ingest_parser = subparsers.add_parser("ingest", help="Load the project corpus into Qdrant")
+    ingest_parser.add_argument("--project")
+
+    benchmark_parser = subparsers.add_parser("benchmark", help="Compare all architectures")
+    benchmark_parser.add_argument("--project")
+    benchmark_parser.add_argument("--repeats", type=int, default=1)
+    benchmark_parser.add_argument("--quiet", action="store_true")
+
+    utility_parser = subparsers.add_parser("utility", help="Measure answer usefulness")
+    utility_parser.add_argument("--project")
+    utility_parser.add_argument("--quiet", action="store_true")
+
     run_parser = subparsers.add_parser("run", help="Run a project query")
     run_parser.add_argument("query")
     run_parser.add_argument("--project")
@@ -254,16 +291,39 @@ def main() -> None:
         for agent in project.agents:
             print(f"{agent.id.value}\t{agent.name}\t{agent.namespace_id.value}")
         return
+    project_path = _resolve_project(getattr(args, "project", None))
     if args.command == "validate":
-        result = validate_workspace(_resolve_project(args.project))
+        result = validate_workspace(project_path)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if not result["ok"]:
             raise SystemExit(1)
         return
-    if args.command == "run":
-        result = run_project(
-            _resolve_project(args.project), args.query, LiveSettings.from_env()
+    if args.command == "ingest":
+        count = ingest_project(project_path, LiveSettings.from_env())
+        print(f"Loaded {count} project records into Qdrant")
+        return
+    if args.command == "benchmark":
+        project, _, _, reports = resolve_project_paths(project_path)
+        report = run_project_comparison(
+            LiveSettings.from_env(),
+            project_path,
+            repeats=args.repeats,
+            show_progress=not args.quiet,
         )
+        paths = report.write(reports / "comparison")
+        print(paths[1].read_text(encoding="utf-8"))
+        print(f"Project: {project.name}")
+        return
+    if args.command == "utility":
+        _, _, _, reports = resolve_project_paths(project_path)
+        report = run_project_utility(
+            LiveSettings.from_env(), project_path, show_progress=not args.quiet
+        )
+        paths = report.write(reports / "answer-utility")
+        print(paths[1].read_text(encoding="utf-8"))
+        return
+    if args.command == "run":
+        result = run_project(project_path, args.query, LiveSettings.from_env())
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
     raise SystemExit("Unsupported command")
