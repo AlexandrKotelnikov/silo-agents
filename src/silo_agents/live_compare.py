@@ -57,7 +57,7 @@ class ComparativeModeMetrics(BaseModel):
 
 
 class ComparativeReport(BaseModel):
-    schema_version: str = "2.0-live-comparison"
+    schema_version: str = "2.1-live-comparison"
     model: str
     embedding_model: str
     case_count: int
@@ -167,7 +167,20 @@ def run_comparison(
         api_key=settings.llm_api_key,
         timeout=180.0,
     )
-    system = build_qdrant_llm_system(client, settings.qdrant_collection, embedder, llm)
+    isolated_system = build_qdrant_llm_system(
+        client,
+        settings.qdrant_collection,
+        embedder,
+        llm,
+        safe_context=False,
+    )
+    policy_system = build_qdrant_llm_system(
+        client,
+        settings.qdrant_collection,
+        embedder,
+        llm,
+        safe_context=True,
+    )
     modes = (ExperimentMode.SHARED_RAG, ExperimentMode.ISOLATED_RAG, ExperimentMode.POLICY_GATED)
     total = repeats * len(cases) * len(modes)
     current = 0
@@ -185,6 +198,11 @@ def run_comparison(
                             client, settings.qdrant_collection, embedder, llm, case
                         )
                     else:
+                        system = (
+                            policy_system
+                            if mode == ExperimentMode.POLICY_GATED
+                            else isolated_system
+                        )
                         orchestration = system.run_many(case.query, mode)
                         selected = set(orchestration.selected_agents)
                         messages = list(orchestration.delivered_messages)

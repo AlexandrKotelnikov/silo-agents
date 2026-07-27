@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from typing import Any
 
 from .models import AgentMessage, Classification, Domain, PolicyDecision
+
+_SECRET_TOKEN = re.compile(r"\b[A-ZА-ЯЁ]{3,}(?:[_-][A-ZА-ЯЁ0-9]+)*-\d{3,}\b")
 
 
 class PolicyGateway:
@@ -44,5 +47,5 @@ def _redact_values(value: Any, sensitive_values: set[str]) -> Any:
         for sensitive in sorted(sensitive_values, key=len, reverse=True):
             if sensitive:
                 result = result.replace(sensitive, "[REDACTED]")
-        return result
+        return _SECRET_TOKEN.sub("[REDACTED]", result)
     return value
