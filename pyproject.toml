@@ -23,6 +23,8 @@ silo-agents-live-run = "silo_agents.live:run_main"
 silo-agents-live-benchmark = "silo_agents.live:benchmark_main"
 silo-agents-live-compare = "silo_agents.live_compare:main"
 silo-agents-answer-utility = "silo_agents.answer_utility:main"
+silo-agents-project-validate = "silo_agents.project_cli:validate_main"
+silo-agents-project-run = "silo_agents.project_cli:run_main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
