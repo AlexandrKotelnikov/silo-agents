@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid5
@@ -143,32 +142,37 @@ class QdrantRetriever:
         self.embedder = embedder
 
     def search(self, query: str, *, limit: int = 3) -> list[RetrievalRecord]:
-        points = self.client.query(
+        points = self._query_points(query, limit=limit)
+        return [self._validate_point(point) for point in points]
+
+    def relevance_ack(self, query: str) -> float:
+        points = self._query_points(query, limit=1)
+        if not points:
+            return 0.0
+        self._validate_point(points[0])
+        raw_score = points[0].get("score")
+        if not isinstance(raw_score, int | float):
+            raise ValueError("Qdrant result omitted the semantic relevance score")
+        return max(0.0, min(1.0, float(raw_score)))
+
+    def _query_points(self, query: str, *, limit: int) -> list[dict[str, Any]]:
+        return self.client.query(
             self.collection_name,
             vector=self.embedder.embed(query),
             query_filter=self._authorization_filter(),
             limit=limit,
         )
-        records: list[RetrievalRecord] = []
-        for point in points:
-            payload = point.get("payload")
-            if not isinstance(payload, dict):
-                raise PermissionError("Qdrant result omitted the authorization payload")
-            record = RetrievalRecord.model_validate(payload)
-            if not self.principal.allows(record.domain, record.classification, record.record_id):
-                raise PermissionError("Qdrant returned a record outside the principal scope")
-            if record.domain != self.domain:
-                raise PermissionError("Qdrant returned a cross-domain record")
-            records.append(record)
-        return records
 
-    def relevance_ack(self, query: str) -> float:
-        records = self.search(query, limit=1)
-        if not records:
-            return 0.0
-        query_terms = _terms(query)
-        overlap = len(query_terms & _terms(records[0].text))
-        return min(1.0, overlap / max(1, len(query_terms)))
+    def _validate_point(self, point: dict[str, Any]) -> RetrievalRecord:
+        payload = point.get("payload")
+        if not isinstance(payload, dict):
+            raise PermissionError("Qdrant result omitted the authorization payload")
+        record = RetrievalRecord.model_validate(payload)
+        if not self.principal.allows(record.domain, record.classification, record.record_id):
+            raise PermissionError("Qdrant returned a record outside the principal scope")
+        if record.domain != self.domain:
+            raise PermissionError("Qdrant returned a cross-domain record")
+        return record
 
     def _authorization_filter(self) -> dict[str, Any]:
         conditions: list[dict[str, Any]] = [
@@ -188,7 +192,3 @@ class QdrantRetriever:
                 }
             )
         return {"must": conditions}
-
-
-def _terms(text: str) -> set[str]:
-    return set(re.findall(r"[a-zA-Zа-яА-Я0-9_%-]+", text.casefold()))

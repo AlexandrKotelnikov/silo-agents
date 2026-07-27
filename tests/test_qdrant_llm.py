@@ -88,6 +88,44 @@ def test_qdrant_filter_is_applied_before_query() -> None:
     } in conditions
 
 
+def test_relevance_ack_uses_qdrant_semantic_score() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "points": [
+                        {
+                            "score": 0.73,
+                            "payload": sample_record().model_dump(mode="json"),
+                        }
+                    ]
+                }
+            },
+        )
+
+    client = QdrantRestClient("http://qdrant", transport=httpx.MockTransport(handler))
+    principal = RetrievalPrincipal(principal_id="process", allowed_domains={Domain.PROCESS})
+    retriever = QdrantRetriever(client, "records", Domain.PROCESS, principal, HashingEmbedder())
+    assert retriever.relevance_ack("list every sensitive code") == pytest.approx(0.73)
+
+
+def test_relevance_ack_fails_closed_without_score() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            200,
+            json={"result": {"points": [{"payload": sample_record().model_dump(mode="json")}]}}
+        )
+
+    client = QdrantRestClient("http://qdrant", transport=httpx.MockTransport(handler))
+    principal = RetrievalPrincipal(principal_id="process", allowed_domains={Domain.PROCESS})
+    retriever = QdrantRetriever(client, "records", Domain.PROCESS, principal, HashingEmbedder())
+    with pytest.raises(ValueError, match="semantic relevance score"):
+        retriever.relevance_ack("reactor")
+
+
 def test_qdrant_rejects_server_side_scope_violation() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         del request
