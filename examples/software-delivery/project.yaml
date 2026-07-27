@@ -1,0 +1,25 @@
+schema_version: 1
+name: software-delivery-and-incident-response
+agents:
+  - id: engineering
+    name: Engineering Agent
+    routing:
+      terms: [architecture, service, deployment, code, dependency]
+      aliases: {архитектура: architecture, сервис: service, развертывание: deployment}
+  - id: security
+    name: Security Agent
+    routing:
+      terms: [vulnerability, exploit, credential, control, security]
+      aliases: {уязвимость: vulnerability, эксплойт: exploit, учетные-данные: credential}
+  - id: support
+    name: Support Agent
+    routing:
+      terms: [customer, symptom, ticket, communication, workaround]
+      aliases: {клиент: customer, симптом: symptom, обращение: ticket}
+  - id: finance
+    name: Finance Agent
+    routing:
+      terms: [service-credit, cost, impact, compensation]
+      aliases: {компенсация: compensation, стоимость: cost, ущерб: impact}
+policy:
+  default: deny
