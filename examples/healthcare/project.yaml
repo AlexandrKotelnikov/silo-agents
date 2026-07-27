@@ -1,0 +1,25 @@
+schema_version: 1
+name: healthcare-care-coordination
+agents:
+  - id: clinical-guidance
+    name: Clinical Guidance Agent
+    routing:
+      terms: [care, diagnosis, pathway, treatment, clinical]
+      aliases: {лечение: treatment, клинический: clinical, маршрут: pathway}
+  - id: pharmacy
+    name: Pharmacy Agent
+    routing:
+      terms: [medication, formulary, interaction, dosage, pharmacy]
+      aliases: {лекарство: medication, взаимодействие: interaction, дозировка: dosage}
+  - id: billing
+    name: Billing Agent
+    routing:
+      terms: [coverage, claim, billing, tariff, reimbursement]
+      aliases: {покрытие: coverage, счет: billing, возмещение: reimbursement}
+  - id: privacy
+    name: Privacy Agent
+    routing:
+      terms: [privacy, consent, identifier, disclosure]
+      aliases: {конфиденциальность: privacy, согласие: consent, идентификатор: identifier}
+policy:
+  default: deny

@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "silo-agents"
-version = "0.6.0"
-description = "Benchmark safe collaboration between AI agents with isolated private knowledge"
+version = "0.7.0"
+description = "Create and benchmark policy-governed AI agent systems from configuration"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
 authors = [{name = "Alexander Kotelnikov"}]
-dependencies = ["pydantic>=2.8,<3", "httpx>=0.28,<1"]
+dependencies = ["pydantic>=2.8,<3", "httpx>=0.28,<1", "PyYAML>=6.0,<7"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.2", "ruff==0.16.0", "mypy>=1.10"]
+dev = ["pytest>=8.2", "ruff==0.16.0", "mypy>=1.10", "types-PyYAML>=6.0"]
 
 [project.scripts]
 silo-agents-benchmark = "silo_agents.experiment:main"
@@ -23,6 +23,8 @@ silo-agents-live-run = "silo_agents.live:run_main"
 silo-agents-live-benchmark = "silo_agents.live:benchmark_main"
 silo-agents-live-compare = "silo_agents.live_compare:main"
 silo-agents-answer-utility = "silo_agents.answer_utility:main"
+silo-agents-project-validate = "silo_agents.project_cli:validate_main"
+silo-agents-project-run = "silo_agents.project_cli:run_main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

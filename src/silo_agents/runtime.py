@@ -3,9 +3,10 @@ from __future__ import annotations
 from .agents import DomainAgent, LLMDomainAgent
 from .embeddings import Embedder
 from .llm import GroundedLLM
-from .models import Classification, Domain, RetrievalRecord
+from .models import AgentId, Classification, RetrievalRecord
 from .orchestrator import BlindOrchestrator
 from .policy import PolicyGateway
+from .project import AgentRegistry, ProjectSpec
 from .qdrant import QdrantRestClient, QdrantRetriever
 from .security import RetrievalPrincipal
 
@@ -28,9 +29,19 @@ def build_qdrant_llm_system(
     *,
     max_classification: Classification = Classification.INTERNAL,
     safe_context: bool = True,
+    project: ProjectSpec | None = None,
 ) -> BlindOrchestrator:
-    domains = (Domain.PROCESS, Domain.MAINTENANCE, Domain.ECONOMICS)
-    agents: dict[Domain, DomainAgent] = {}
+    if project is not None:
+        return AgentRegistry(project).build_qdrant_system(
+            client,
+            collection_name,
+            embedder,
+            llm,
+            safe_context=safe_context,
+        )
+
+    domains = (AgentId.PROCESS, AgentId.MAINTENANCE, AgentId.ECONOMICS)
+    agents: dict[AgentId, DomainAgent] = {}
     for domain in domains:
         principal = RetrievalPrincipal(
             principal_id=f"{domain.value}-agent",
@@ -44,5 +55,5 @@ def build_qdrant_llm_system(
             llm,
             safe_context=safe_context,
         )
-    routes = {domain: {Domain.ORCHESTRATOR} for domain in domains}
+    routes = {domain: {AgentId.ORCHESTRATOR} for domain in domains}
     return BlindOrchestrator(agents, PolicyGateway(routes))

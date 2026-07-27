@@ -1,0 +1,25 @@
+schema_version: 1
+name: contract-and-financial-review
+agents:
+  - id: contracts
+    name: Contracts Agent
+    routing:
+      terms: [contract, clause, termination, liability, notice]
+      aliases: {договор: contract, условие: clause, расторжение: termination}
+  - id: compliance
+    name: Compliance Agent
+    routing:
+      terms: [compliance, control, regulation, approval]
+      aliases: {комплаенс: compliance, контроль: control, согласование: approval}
+  - id: finance
+    name: Finance Agent
+    routing:
+      terms: [cost, impact, budget, margin, payment]
+      aliases: {стоимость: cost, бюджет: budget, платеж: payment}
+  - id: procurement
+    name: Procurement Agent
+    routing:
+      terms: [supplier, procurement, purchase, tender]
+      aliases: {поставщик: supplier, закупка: procurement, тендер: tender}
+policy:
+  default: deny

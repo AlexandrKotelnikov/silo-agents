@@ -1,0 +1,31 @@
+schema_version: 1
+name: manufacturing-decision-support
+orchestrator:
+  max_agents_per_query: 8
+agents:
+  - id: operations
+    name: Operations Agent
+    description: Operating envelope, throughput and process constraints
+    routing:
+      terms: [reactor, cooling, pressure, temperature, throughput]
+      aliases: {реактор: reactor, охлаждение: cooling, давление: pressure}
+  - id: maintenance
+    name: Maintenance Agent
+    description: Equipment condition, inspection and intervention risk
+    routing:
+      terms: [pump, bearing, vibration, maintenance, reliability]
+      aliases: {насос: pump, подшипник: bearing, вибрация: vibration}
+  - id: economics
+    name: Economics Agent
+    description: Margin, cost and scenario economics
+    routing:
+      terms: [margin, cost, revenue, benefit, economics]
+      aliases: {маржа: margin, затраты: cost, выручка: revenue}
+  - id: safety
+    name: Safety Agent
+    description: Approved safety constraints and operating prohibitions
+    routing:
+      terms: [safety, hazard, permit, interlock]
+      aliases: {безопасность: safety, опасность: hazard, блокировка: interlock}
+policy:
+  default: deny
