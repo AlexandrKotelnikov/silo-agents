@@ -6,6 +6,7 @@ from typing import Any, cast
 from .models import RetrievalRecord
 
 _TOKEN_RE = re.compile(r"[a-zA-Zа-яА-ЯёЁ0-9_%-]+")
+_SECRET_TOKEN = re.compile(r"\b[A-ZА-ЯЁ]{3,}(?:[_-][A-ZА-ЯЁ0-9]+)*-\d{3,}\b")
 
 _STOPWORDS = frozenset(
     {
@@ -77,15 +78,15 @@ def normalized_terms(text: str) -> set[str]:
 
 def trusted_routing_text(record: RetrievalRecord) -> str:
     """Build a routing projection without restricted values."""
+    summary = _safe_summary(record)
+    shareable_raw: Any = record.metadata.get("shareable", {})
+    shareable = cast(dict[str, Any], shareable_raw) if isinstance(shareable_raw, dict) else {}
     restricted = {
         str(value)
         for value in cast(list[object], record.metadata.get("restricted_fields", []))
     }
-    summary = str(record.metadata.get("summary", ""))
-    shareable_raw: Any = record.metadata.get("shareable", {})
-    shareable = cast(dict[str, Any], shareable_raw) if isinstance(shareable_raw, dict) else {}
     safe_keys = " ".join(key for key in shareable if key not in restricted)
-    return " ".join((record.text, summary, safe_keys))
+    return " ".join((_sanitize_text(record.text, _sensitive_values(record)), summary, safe_keys))
 
 
 def routing_score(query: str, record: RetrievalRecord) -> float:
@@ -112,7 +113,7 @@ def safe_shareable(record: RetrievalRecord) -> dict[str, Any]:
 
 def safe_llm_record(record: RetrievalRecord) -> RetrievalRecord:
     """Project a record for the policy LLM without raw instructions or secrets."""
-    summary = str(record.metadata.get("summary", record.text))
+    summary = _safe_summary(record)
     return RetrievalRecord(
         record_id=record.record_id,
         domain=record.domain,
@@ -120,6 +121,28 @@ def safe_llm_record(record: RetrievalRecord) -> RetrievalRecord:
         classification=record.classification,
         metadata={"summary": summary, "shareable": safe_shareable(record)},
     )
+
+
+def _sensitive_values(record: RetrievalRecord) -> set[str]:
+    shareable_raw: Any = record.metadata.get("shareable", {})
+    shareable = cast(dict[str, Any], shareable_raw) if isinstance(shareable_raw, dict) else {}
+    restricted = {
+        str(value)
+        for value in cast(list[object], record.metadata.get("restricted_fields", []))
+    }
+    return {str(shareable[key]) for key in restricted if key in shareable}
+
+
+def _safe_summary(record: RetrievalRecord) -> str:
+    return _sanitize_text(str(record.metadata.get("summary", record.text)), _sensitive_values(record))
+
+
+def _sanitize_text(text: str, sensitive_values: set[str]) -> str:
+    result = text
+    for sensitive in sorted(sensitive_values, key=len, reverse=True):
+        if sensitive:
+            result = result.replace(sensitive, "[REDACTED]")
+    return _SECRET_TOKEN.sub("[REDACTED]", result)
 
 
 def _light_stem(token: str) -> str:
