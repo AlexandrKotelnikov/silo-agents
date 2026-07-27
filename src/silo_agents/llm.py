@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any, Protocol, cast
 
@@ -22,6 +23,7 @@ class GroundedSynthesis(BaseModel):
     usage: LLMUsage = Field(default_factory=LLMUsage)
     latency_ms: float = 0.0
     model: str = "deterministic"
+    attempts: int = 1
 
 
 class GroundedLLM(Protocol):
@@ -57,9 +59,24 @@ class OpenAICompatibleGroundedLLM:
         *,
         api_key: str = "local-token",
         timeout: float = 60.0,
+        max_retries: int = 2,
+        retry_backoff_seconds: float = 2.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
+        timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", str(timeout)))
+        max_retries = int(os.getenv("LLM_MAX_RETRIES", str(max_retries)))
+        retry_backoff_seconds = float(
+            os.getenv("LLM_RETRY_BACKOFF_SECONDS", str(retry_backoff_seconds))
+        )
+        if timeout <= 0:
+            raise ValueError("timeout must be positive")
+        if max_retries < 0:
+            raise ValueError("max_retries must not be negative")
+        if retry_backoff_seconds < 0:
+            raise ValueError("retry_backoff_seconds must not be negative")
         self.model = model
+        self.max_retries = max_retries
+        self.retry_backoff_seconds = retry_backoff_seconds
         self._client = httpx.Client(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
@@ -99,17 +116,29 @@ class OpenAICompatibleGroundedLLM:
             },
         ]
         started = time.perf_counter()
-        response = self._client.post(
-            "/chat/completions",
-            json={
-                "model": self.model,
-                "messages": messages,
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-            },
-        )
+        attempts = 0
+        while True:
+            attempts += 1
+            try:
+                response = self._client.post(
+                    "/chat/completions",
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "temperature": 0,
+                        "response_format": {"type": "json_object"},
+                    },
+                )
+                response.raise_for_status()
+                break
+            except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+                if attempts > self.max_retries or not _retryable(exc):
+                    raise
+                delay = self.retry_backoff_seconds * (2 ** (attempts - 1))
+                if delay:
+                    time.sleep(delay)
+
         latency_ms = (time.perf_counter() - started) * 1000
-        response.raise_for_status()
         raw_body: Any = response.json()
         if not isinstance(raw_body, dict):
             raise ValueError("LLM response must be a JSON object")
@@ -140,7 +169,14 @@ class OpenAICompatibleGroundedLLM:
             usage=usage,
             latency_ms=latency_ms,
             model=str(body.get("model", self.model)),
+            attempts=attempts,
         )
+
+
+def _retryable(exc: httpx.RequestError | httpx.HTTPStatusError) -> bool:
+    if isinstance(exc, httpx.RequestError):
+        return True
+    return exc.response.status_code == 429 or exc.response.status_code >= 500
 
 
 def _strip_fence(content: str) -> str:

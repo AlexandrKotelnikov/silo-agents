@@ -28,6 +28,9 @@ class LiveSettings:
     embedding_base_url: str
     embedding_model: str
     retrieval_limit: int = 3
+    llm_timeout_seconds: float = 180.0
+    llm_max_retries: int = 2
+    llm_retry_backoff_seconds: float = 2.0
 
     @classmethod
     def from_env(cls, dotenv_path: str | Path = ".env") -> "LiveSettings":
@@ -42,4 +45,7 @@ class LiveSettings:
             embedding_base_url=os.getenv("EMBEDDING_BASE_URL", "http://localhost:11434"),
             embedding_model=os.getenv("EMBEDDING_MODEL", "embeddinggemma"),
             retrieval_limit=int(os.getenv("RETRIEVAL_LIMIT", "3")),
+            llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "180")),
+            llm_max_retries=int(os.getenv("LLM_MAX_RETRIES", "2")),
+            llm_retry_backoff_seconds=float(os.getenv("LLM_RETRY_BACKOFF_SECONDS", "2")),
         )
