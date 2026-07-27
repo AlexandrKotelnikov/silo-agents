@@ -16,7 +16,7 @@ from silo_agents import (
 def test_route_many_selects_collaborating_agents() -> None:
     system = build_demo_system()
     selected = system.route_many(
-        "Assess production increase limit, maintenance risk and economic effect margin."
+        "Assess reactor production increase limit, maintenance risk and economic effect margin."
     )
     assert set(selected) == {Domain.PROCESS, Domain.MAINTENANCE, Domain.ECONOMICS}
 

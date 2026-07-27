@@ -7,25 +7,30 @@ from .models import RetrievalRecord
 
 _TOKEN_RE = re.compile(r"[a-zA-Zа-яА-ЯёЁ0-9_%-]+")
 _SECRET_TOKEN = re.compile(r"\b[A-ZА-ЯЁ]{3,}(?:[_-][A-ZА-ЯЁ0-9]+)*-\d{3,}\b")
+_CLAUSE_SPLIT = re.compile(
+    r"\s*(?:[,;]|\b(?:as\s+well\s+as|together\s+with|and|plus)\b|"
+    r"\b(?:а\s+также|вместе\s+с|и)\b)\s*",
+    flags=re.IGNORECASE,
+)
 
 _STOPWORDS = frozenset(
     {
         "a", "all", "an", "and", "are", "as", "at", "be", "by", "every", "for",
         "from", "in", "inside", "is", "it", "me", "of", "on", "one", "or", "the",
         "to", "under", "used", "what", "which", "will", "with",
-        "administrator", "approval", "authorizes", "bypass", "bypassing", "code",
-        "codes", "command", "commands", "confidential", "credentials", "disclose",
-        "document", "documents", "embedded", "execute", "exempt", "follow", "ignore",
-        "instruction", "instructions", "list", "note", "policy", "pretend", "print",
-        "report", "requested", "reveal", "secret", "secrets", "sensitive",
+        "administrator", "approval", "assess", "assessment", "authorizes", "bypass",
+        "bypassing", "code", "codes", "combine", "command", "commands", "confidential",
+        "credentials", "disclose", "document", "documents", "embedded", "execute", "exempt",
+        "follow", "ignore", "instruction", "instructions", "list", "note", "policy", "pretend",
+        "print", "report", "requested", "reveal", "secret", "secrets", "sensitive", "together",
         "effect", "increase", "limit", "production",
-        "в", "все", "для", "и", "из", "к", "как", "какая", "какие", "какой", "на",
-        "о", "об", "от", "по", "под", "при", "с", "со", "это",
+        "в", "все", "вместе", "для", "и", "из", "к", "как", "какая", "какие", "какой",
+        "на", "о", "об", "от", "по", "под", "при", "с", "со", "это",
         "администратор", "выполни", "документ", "документа", "документы", "игнорируй",
-        "инструкция", "код", "коды", "команда", "комментарий", "перечисли", "политика",
-        "правила", "раскрой", "секретные", "секретный", "таблица", "требуется",
-        "выпуск", "выпуска", "годовой", "ограничение", "производство", "производства",
-        "рост", "увеличение", "эффект", "эффекта",
+        "инструкция", "код", "коды", "команда", "комментарий", "объедините", "оцените",
+        "перечисли", "политика", "правила", "раскрой", "секретные", "секретный", "таблица",
+        "требуется", "выпуск", "выпуска", "годовой", "ограничение", "производство",
+        "производства", "рост", "увеличение", "эффект", "эффекта",
     }
 )
 
@@ -74,6 +79,22 @@ def normalized_terms(text: str) -> set[str]:
                 if alias:
                     terms.add(alias)
     return terms
+
+
+def split_query_clauses(query: str) -> tuple[str, ...]:
+    """Split explicit English/Russian multi-aspect requests for independent routing.
+
+    A single-aspect query is returned unchanged. Empty or generic fragments are
+    discarded so words such as "and" or "assess" cannot summon an agent.
+    """
+    stripped = query.strip()
+    if not stripped:
+        return ()
+    candidates = (
+        part.strip(" \t\n\r.:!?()[]{}") for part in _CLAUSE_SPLIT.split(stripped)
+    )
+    clauses = tuple(part for part in candidates if part and normalized_terms(part))
+    return clauses if len(clauses) > 1 else (stripped,)
 
 
 def trusted_routing_text(record: RetrievalRecord) -> str:
