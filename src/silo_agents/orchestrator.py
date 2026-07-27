@@ -5,7 +5,7 @@ from enum import StrEnum
 from uuid import uuid4
 
 from .agents import DomainAgent
-from .models import AgentMessage, Domain, PolicyDecision
+from .models import AgentId, AgentMessage, PolicyDecision
 from .policy import PolicyGateway
 from .routing import split_query_clauses
 
@@ -18,14 +18,14 @@ class ExperimentMode(StrEnum):
 
 @dataclass(frozen=True)
 class OrchestrationResult:
-    selected_agent: Domain
+    selected_agent: AgentId
     raw_message: AgentMessage
     policy_decision: PolicyDecision | None
 
 
 @dataclass(frozen=True)
 class MultiOrchestrationResult:
-    selected_agents: tuple[Domain, ...]
+    selected_agents: tuple[AgentId, ...]
     raw_messages: tuple[AgentMessage, ...]
     policy_decisions: tuple[PolicyDecision, ...]
     abstained: bool = False
@@ -42,13 +42,30 @@ class MultiOrchestrationResult:
 
 
 class BlindOrchestrator:
-    """Routes through relevance ACKs and never reads domain documents directly."""
+    """Routes through relevance ACKs and never reads agent documents directly."""
 
-    def __init__(self, agents: dict[Domain, DomainAgent], gateway: PolicyGateway) -> None:
+    def __init__(
+        self,
+        agents: dict[AgentId, DomainAgent],
+        gateway: PolicyGateway,
+        *,
+        orchestrator_id: AgentId = AgentId.ORCHESTRATOR,
+        max_agents: int = 8,
+        relative_threshold: float = 0.5,
+    ) -> None:
+        if not agents:
+            raise ValueError("At least one agent is required")
+        if max_agents < 1:
+            raise ValueError("max_agents must be at least 1")
+        if not 0 < relative_threshold <= 1:
+            raise ValueError("relative_threshold must be in (0, 1]")
         self.agents = agents
         self.gateway = gateway
+        self.orchestrator_id = orchestrator_id
+        self.max_agents = max_agents
+        self.relative_threshold = relative_threshold
 
-    def route(self, query: str) -> Domain:
+    def route(self, query: str) -> AgentId:
         selected = self.route_many(query, max_agents=1)
         if not selected:
             raise ValueError("No agent reported relevant private knowledge")
@@ -58,38 +75,41 @@ class BlindOrchestrator:
         self,
         query: str,
         *,
-        relative_threshold: float = 0.5,
-        max_agents: int = 3,
-    ) -> tuple[Domain, ...]:
-        if not 0 < relative_threshold <= 1:
+        relative_threshold: float | None = None,
+        max_agents: int | None = None,
+    ) -> tuple[AgentId, ...]:
+        threshold = self.relative_threshold if relative_threshold is None else relative_threshold
+        limit = self.max_agents if max_agents is None else max_agents
+        if not 0 < threshold <= 1:
             raise ValueError("relative_threshold must be in (0, 1]")
+        if limit < 1:
+            raise ValueError("max_agents must be at least 1")
 
-        clauses = split_query_clauses(query)
-        selected_scores: dict[Domain, float] = {}
-        for clause in clauses:
+        selected_scores: dict[AgentId, float] = {}
+        for clause in split_query_clauses(query):
             scored = sorted(
-                ((agent.relevance_ack(clause), domain) for domain, agent in self.agents.items()),
+                ((agent.relevance_ack(clause), agent_id) for agent_id, agent in self.agents.items()),
                 key=lambda item: (-item[0], item[1].value),
             )
             if not scored or scored[0][0] == 0:
                 continue
-            cutoff = scored[0][0] * relative_threshold
-            for score, domain in scored:
+            cutoff = scored[0][0] * threshold
+            for score, agent_id in scored:
                 if score >= cutoff and score > 0:
-                    selected_scores[domain] = max(selected_scores.get(domain, 0.0), score)
+                    selected_scores[agent_id] = max(selected_scores.get(agent_id, 0.0), score)
 
         return tuple(
-            domain
-            for domain, _ in sorted(
+            agent_id
+            for agent_id, _ in sorted(
                 selected_scores.items(), key=lambda item: (-item[1], item[0].value)
-            )[:max_agents]
+            )[:limit]
         )
 
     def run(
         self, query: str, mode: ExperimentMode = ExperimentMode.POLICY_GATED
     ) -> OrchestrationResult:
         selected = self.route(query)
-        message = self.agents[selected].answer(str(uuid4()), query, Domain.ORCHESTRATOR)
+        message = self.agents[selected].answer(str(uuid4()), query, self.orchestrator_id)
         decision = self.gateway.evaluate(message) if mode == ExperimentMode.POLICY_GATED else None
         return OrchestrationResult(selected, message, decision)
 
@@ -101,8 +121,8 @@ class BlindOrchestrator:
             return MultiOrchestrationResult((), (), (), abstained=True)
         task_id = str(uuid4())
         messages = tuple(
-            self.agents[domain].answer(task_id, query, Domain.ORCHESTRATOR)
-            for domain in selected
+            self.agents[agent_id].answer(task_id, query, self.orchestrator_id)
+            for agent_id in selected
         )
         decisions = (
             tuple(self.gateway.evaluate(message) for message in messages)
