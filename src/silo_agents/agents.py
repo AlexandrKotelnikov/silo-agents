@@ -6,6 +6,7 @@ from uuid import uuid4
 from .llm import GroundedLLM
 from .models import AgentMessage, Domain, Evidence
 from .rag import Retriever
+from .routing import safe_llm_record, safe_shareable
 
 
 class DomainAgent:
@@ -61,17 +62,27 @@ class DomainAgent:
 class LLMDomainAgent(DomainAgent):
     """Domain agent that shares one LLM client but keeps a private retriever."""
 
-    def __init__(self, domain: Domain, knowledge_base: Retriever, llm: GroundedLLM) -> None:
+    def __init__(
+        self,
+        domain: Domain,
+        knowledge_base: Retriever,
+        llm: GroundedLLM,
+        *,
+        safe_context: bool = False,
+    ) -> None:
         super().__init__(domain, knowledge_base)
         self.llm = llm
+        self.safe_context = safe_context
 
     def answer(self, task_id: str, query: str, recipient: Domain) -> AgentMessage:
         records = self.knowledge_base.search(query)
         if not records:
             return super().answer(task_id, query, recipient)
-        synthesis = self.llm.synthesize(query, self.domain, records)
+        synthesis_records = [safe_llm_record(record) for record in records] if self.safe_context else records
+        synthesis = self.llm.synthesize(query, self.domain, synthesis_records)
         restricted_fields: set[str] = set()
         sensitive_values: set[str] = set()
+        deterministic_facts: dict[str, Any] = {}
         for record in records:
             shareable = cast(dict[str, Any], record.metadata.get("shareable", {}))
             current_fields = {
@@ -84,7 +95,10 @@ class LLMDomainAgent(DomainAgent):
                 for field_name in current_fields
                 if field_name in shareable
             )
+            if self.safe_context:
+                deterministic_facts.update(safe_shareable(record))
         classification_order = {"public": 0, "internal": 1, "restricted": 2}
+        facts = deterministic_facts if self.safe_context else synthesis.facts
         return AgentMessage(
             message_id=str(uuid4()),
             task_id=task_id,
@@ -96,7 +110,7 @@ class LLMDomainAgent(DomainAgent):
                 key=lambda value: classification_order[value.value],
             ),
             share_scope={recipient},
-            conclusion={"status": "grounded", "summary": synthesis.summary, **synthesis.facts},
+            conclusion={"status": "grounded", "summary": synthesis.summary, **facts},
             evidence=[
                 Evidence(source_id=record.record_id, fragment_id=f"{record.record_id}:0")
                 for record in records
@@ -109,5 +123,6 @@ class LLMDomainAgent(DomainAgent):
                 "completion_tokens": synthesis.usage.completion_tokens,
                 "total_tokens": synthesis.usage.total_tokens,
                 "llm_latency_ms": synthesis.latency_ms,
+                "safe_context": str(self.safe_context).lower(),
             },
         )
