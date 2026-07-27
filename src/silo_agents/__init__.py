@@ -13,6 +13,7 @@ from .benchmark import (
 from .datasets import load_cases, load_records
 from .demo import build_demo_system, demo_records
 from .embeddings import HashingEmbedder
+from .final_answer import FinalAnswer, synthesize_final_answer
 from .llm import DeterministicGroundedLLM, OpenAICompatibleGroundedLLM
 from .models import AgentId, AgentMessage, Classification, Domain, Evidence, RetrievalRecord
 from .orchestrator import (
@@ -45,6 +46,7 @@ __all__ = [
     "Evidence",
     "ExperimentHarness",
     "ExperimentMode",
+    "FinalAnswer",
     "HashingEmbedder",
     "IsolatedKnowledgeBase",
     "LLMDomainAgent",
@@ -70,4 +72,5 @@ __all__ = [
     "ingest_qdrant",
     "load_cases",
     "load_records",
+    "synthesize_final_answer",
 ]
