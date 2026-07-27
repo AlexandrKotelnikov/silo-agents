@@ -1,0 +1,25 @@
+schema_version: 1
+name: education-and-student-support
+agents:
+  - id: curriculum
+    name: Curriculum Agent
+    routing:
+      terms: [course, curriculum, prerequisite, learning, assessment]
+      aliases: {курс: course, программа: curriculum, пререквизит: prerequisite}
+  - id: student-support
+    name: Student Support Agent
+    routing:
+      terms: [support, counseling, advising, schedule]
+      aliases: {поддержка: support, консультация: counseling, расписание: schedule}
+  - id: accessibility
+    name: Accessibility Agent
+    routing:
+      terms: [accessibility, accommodation, disability, adaptation]
+      aliases: {доступность: accessibility, адаптация: adaptation}
+  - id: finance-aid
+    name: Financial Aid Agent
+    routing:
+      terms: [scholarship, funding, eligibility, tuition]
+      aliases: {стипендия: scholarship, финансирование: funding, обучение: tuition}
+policy:
+  default: deny
