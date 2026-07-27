@@ -1,0 +1,33 @@
+schema_version: 1
+project_name: supplier-risk-review
+language: en
+goal: Assess supplier contract, financial exposure and compliance risk.
+destination: generated/supplier-risk-review
+agents:
+  - id: contracts
+    name: Contracts Agent
+    description: Reviews approved contract clauses and obligations.
+    knowledge_namespace: approved-contracts
+    routing_terms: [contract, clause, termination, liability]
+    aliases: {договор: contract, расторжение: termination}
+    shareable_fields: [notice_period_days, liability_limit_percent]
+    restricted_fields: [negotiation_code]
+    example_question: What are the approved termination and liability conditions?
+  - id: finance
+    name: Finance Agent
+    description: Provides approved financial exposure facts.
+    knowledge_namespace: approved-finance
+    routing_terms: [cost, exposure, budget, payment]
+    aliases: {стоимость: cost, бюджет: budget}
+    shareable_fields: [financial_exposure_eur]
+    restricted_fields: [account_code]
+    example_question: What is the approved financial exposure?
+  - id: compliance
+    name: Compliance Agent
+    description: Checks whether formal approval is required.
+    knowledge_namespace: approved-compliance
+    routing_terms: [compliance, approval, control, regulation]
+    aliases: {согласование: approval, контроль: control}
+    shareable_fields: [approval_required]
+    restricted_fields: [control_rule_code]
+    example_question: Is compliance approval required?
