@@ -1,0 +1,25 @@
+schema_version: 1
+name: public-service-case-assistance
+agents:
+  - id: eligibility
+    name: Eligibility Agent
+    routing:
+      terms: [eligibility, benefit, requirement, evidence]
+      aliases: {право: eligibility, льгота: benefit, требование: requirement}
+  - id: casework
+    name: Casework Agent
+    routing:
+      terms: [application, case, status, appointment, next-step]
+      aliases: {заявление: application, дело: case, статус: status}
+  - id: fraud-controls
+    name: Fraud Controls Agent
+    routing:
+      terms: [fraud, anomaly, risk, verification]
+      aliases: {мошенничество: fraud, аномалия: anomaly, проверка: verification}
+  - id: privacy
+    name: Privacy Agent
+    routing:
+      terms: [privacy, disclosure, consent, identifier]
+      aliases: {конфиденциальность: privacy, раскрытие: disclosure, согласие: consent}
+policy:
+  default: deny
